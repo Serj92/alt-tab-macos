@@ -477,11 +477,17 @@ class SettingsWindow: NSWindow {
         searchField.sendsSearchStringImmediately = true
         searchField.sendsWholeSearchString = true
         searchField.bezelStyle = .roundedBezel
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             searchField.controlSize = .extraLarge
         } else if #available(macOS 13.0, *) {
             searchField.controlSize = .large
         }
+        #else
+        if #available(macOS 13.0, *) {
+            searchField.controlSize = .large
+        }
+        #endif
         searchField.translatesAutoresizingMaskIntoConstraints = false
         parent.addSubview(searchField)
         NSLayoutConstraint.activate([

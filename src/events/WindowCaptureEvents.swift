@@ -63,9 +63,12 @@ class WindowCaptureScreenshots {
             BackgroundWork.screenshotsQueue.addOperation {
                 cachedSCWindows.withLock { $0 = shareableContent.windows }
                 guard source != .refreshOnlyThumbnailsAfterShowUi || SwitcherSession.isActive else { return }
+                // index by windowID once (first wins, matching the previous `.first { ... }` semantics)
+                // to avoid an O(notCached × windows) scan when many windows are open
+                let windowsById = Dictionary(shareableContent.windows.map { ($0.windowID, $0) }, uniquingKeysWith: { first, _ in first })
                 for notCachedWindow in notCachedWindows {
                     guard let request = requests[notCachedWindow] else { continue }
-                    if let cachedWindow = (shareableContent.windows.first { $0.windowID == notCachedWindow }) {
+                    if let cachedWindow = windowsById[notCachedWindow] {
                         oneTimeCapture(cachedWindow, request, source, prioritized.contains(notCachedWindow))
                     } else {
                         Logger.debug { "wid:\(notCachedWindow) was not found in SCShareableContent windows" }
@@ -77,10 +80,13 @@ class WindowCaptureScreenshots {
 
     private static func sortCachedAndNotCached(_ windows: [CGWindowID]) -> ([SCWindow], [CGWindowID]) {
         return cachedSCWindows.withLock { cache in
+            // index by windowID once (first wins, matching the previous `.first { ... }` semantics)
+            // to avoid an O(windows × cache) scan when many windows are open
+            let cacheById = Dictionary(cache.map { ($0.windowID, $0) }, uniquingKeysWith: { first, _ in first })
             var cachedWindows = [SCWindow]()
             var notCachedWindows = [CGWindowID]()
             for window in windows {
-                if let cachedWindow = (cache.first { $0.windowID == window }) {
+                if let cachedWindow = cacheById[window] {
                     cachedWindows.append(cachedWindow)
                 } else {
                     notCachedWindows.append(window)

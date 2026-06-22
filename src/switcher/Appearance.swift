@@ -1,6 +1,13 @@
 import Cocoa
 
 class Appearance {
+    // style
+    // The effective appearance style is constant for the whole duration of one switcher show; it only
+    // changes when `update()`/`applySize()` run (i.e. when the active shortcut changes). The rendering
+    // hot path (TileView/TilesView) reads it dozens of times per tile per refresh, and each
+    // `Preferences.effectiveAppearanceStyle(_:)` call allocates a string and takes a locked dictionary
+    // lookup. We snapshot it once here and let the hot path read this cached value instead.
+    static var resolvedStyle = AppearanceStylePreference.thumbnails
     // size
     static var resolvedSize = AppearanceSizePreference.medium
     static var hideThumbnails = Bool(false)
@@ -45,6 +52,7 @@ class Appearance {
     }
 
     static func update() {
+        resolvedStyle = currentStyle
         updateSize()
         updateTheme()
     }
@@ -83,11 +91,15 @@ class Appearance {
             lightTheme()
         }
         // for Liquid Glass, we don't want a shadow around the panel
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *), currentStyle == .appIcons && LiquidGlassEffectView.canUsePrivateLiquidGlassLook() {
             enablePanelShadow = false
         } else {
             enablePanelShadow = true
         }
+        #else
+        enablePanelShadow = true
+        #endif
     }
 
     private static func thumbnailsSize(_ isHorizontalScreen: Bool, _ size: AppearanceSizePreference) {

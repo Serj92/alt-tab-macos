@@ -1,3 +1,4 @@
+#if compiler(>=6.2)
 @available(macOS 26.0, *)
 class LiquidGlassEffectView: NSGlassEffectView, EffectView {
     private typealias SetVariantType = @convention(c) (AnyObject, Selector, Int) -> Void
@@ -36,6 +37,7 @@ class LiquidGlassEffectView: NSGlassEffectView, EffectView {
         cornerRadius = Appearance.windowCornerRadius
     }
 }
+#endif
 
 class FrostedGlassEffectView: NSVisualEffectView, EffectView {
     convenience init(_: Int?) {
@@ -82,6 +84,7 @@ enum EffectViewKind {
 }
 
 func requiredEffectViewKind() -> EffectViewKind {
+    #if compiler(>=6.2)
     if #available(macOS 26.0, *) {
         if Preferences.effectiveAppearanceStyle(SwitcherSession.activeShortcutIndex) == .appIcons,
            LiquidGlassEffectView.canUsePrivateLiquidGlassLook() {
@@ -89,10 +92,12 @@ func requiredEffectViewKind() -> EffectViewKind {
         }
         return .liquidGlassRegular
     }
+    #endif
     return .frosted
 }
 
 func makeEffectView(for kind: EffectViewKind) -> EffectView {
+    #if compiler(>=6.2)
     if #available(macOS 26.0, *) {
         switch kind {
             case .liquidGlassClear:
@@ -112,6 +117,7 @@ func makeEffectView(for kind: EffectViewKind) -> EffectView {
                 break
         }
     }
+    #endif
     Logger.debug { "Creating FrostedGlassEffectView(nil)" }
     return FrostedGlassEffectView(nil)
 }

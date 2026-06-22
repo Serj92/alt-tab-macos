@@ -140,6 +140,7 @@ class TilesView {
         searchField.sendsSearchStringImmediately = true
         searchField.sendsWholeSearchString = true
         searchField.bezelStyle = .roundedBezel
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             searchField.controlSize = .extraLarge
         } else if #available(macOS 13.0, *) {
@@ -147,6 +148,13 @@ class TilesView {
         } else {
             searchField.controlSize = .regular
         }
+        #else
+        if #available(macOS 13.0, *) {
+            searchField.controlSize = .large
+        } else {
+            searchField.controlSize = .regular
+        }
+        #endif
         searchField.usesSingleLineMode = true
         searchField.target = Self.self
         searchField.action = #selector(Self.searchFieldChanged(_:))
@@ -541,7 +549,7 @@ class TilesView {
         var frameHeight = TilesView.thumbnailsHeight + Appearance.windowPadding * 2 + searchReservedHeight
         let originX = Appearance.windowPadding
         var originY = Appearance.windowPadding
-        if Preferences.effectiveAppearanceStyle(SwitcherSession.activeShortcutIndex) == .appIcons {
+        if Appearance.resolvedStyle == .appIcons {
             // If there is title under the icon on the last line, the height of the title needs to be subtracted.
             frameHeight = frameHeight - Appearance.intraCellPadding - labelHeight
             originY = originY - Appearance.intraCellPadding - labelHeight
@@ -592,7 +600,7 @@ class TilesView {
     }
 
     private static func appIconsBottomViewportPadding(_ maxY: CGFloat, _ heightMax: CGFloat, _ labelHeight: CGFloat) -> CGFloat {
-        guard Preferences.effectiveAppearanceStyle(SwitcherSession.activeShortcutIndex) == .appIcons, maxY > heightMax else { return 0 }
+        guard Appearance.resolvedStyle == .appIcons, maxY > heightMax else { return 0 }
         return max(0, Appearance.windowPadding - labelHeight)
     }
 

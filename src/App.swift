@@ -265,6 +265,10 @@ class App: AppCenterApplication {
         hideUi(true)
         if let window = selectedWindow, MissionControl.state() == .inactive || MissionControl.state() == .showDesktop {
             window.focus()
+            // Pull focus bookkeeping forward so a rapid next Cmd+Tab doesn't read stale state while the AX round-trip is in flight.
+            Applications.frontmostPid = window.application.pid
+            window.application.focusedWindow = window
+            _ = Windows.updateLastFocusOrder(window)
             if Preferences.cursorFollowFocus == .always || (
                 Preferences.cursorFollowFocus == .differentScreen && (Spaces.screenSpacesMap.first { $0.value.contains { space in window.spaceIds.contains(space) } })?.key != NSScreen.active()?.cachedUuid()) {
                 moveCursorToSelectedWindow(window)
