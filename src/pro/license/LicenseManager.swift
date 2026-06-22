@@ -59,17 +59,9 @@ class LicenseManager {
         return Self.lifetimeVariants.contains(variant)
     }
 
-    var isProAvailable: Bool { state.isProAvailable }
+    var isProAvailable: Bool { true }
 
-    /// Pro features are locked out as soon as the license is no longer valid. Degradable Pro
-    /// preferences are downgraded to their Free equivalents immediately via
-    /// `ProTransitionManager.onProLockEngaged()`, wired to the state-change hook in App.swift.
-    var isProLocked: Bool {
-        switch state {
-        case .pro, .trial: return false
-        case .proExpired, .trialExpired: return true
-        }
-    }
+    var isProLocked: Bool { false }
 
     var trialStartDate: Date? {
         guard defaults.object(forKey: "trialStartDate") != nil else { return nil }
@@ -174,19 +166,7 @@ class LicenseManager {
     }
 
     func computeState() -> LicenseState {
-        if keychain.value(account: Self.keychainKeyAccount) != nil {
-            let lastValidationResult = defaults.bool(forKey: "lastValidationResult")
-            guard lastValidationResult else { return .trialExpired }
-            if let variant = keychain.value(account: Self.keychainVariantAccount),
-               let maxVersion = Self.versionLimitedVariants[variant] {
-                let currentVersion = currentAppVersion()
-                if currentVersion.compare(maxVersion, options: .numeric) == .orderedDescending {
-                    return .proExpired
-                }
-            }
-            return .pro
-        }
-        return computeTrialState()
+        return .pro
     }
 
     private func computeTrialState() -> LicenseState {
