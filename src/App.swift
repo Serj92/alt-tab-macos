@@ -90,7 +90,9 @@ class App: AppCenterApplication {
         AboutWindow.canBecomeKey_ = canBecomeKey_
         PermissionsWindow.canBecomeKey_ = canBecomeKey_
         FeedbackWindow.canBecomeKey_ = canBecomeKey_
+        #if DEBUG
         DebugWindow.canBecomeKey_ = canBecomeKey_
+        #endif
     }
 
     static func focusTarget() {
@@ -129,10 +131,12 @@ class App: AppCenterApplication {
         showSecondaryWindow(FeedbackWindow.shared!)
     }
 
+    #if DEBUG
     @objc static func showDebugWindow() {
         initializeDebugWindowIfNeeded()
         showSecondaryWindow(DebugWindow.shared!)
     }
+    #endif
 
     @objc static func showSettingsWindow() {
         guard Menubar.statusItem != nil else {
@@ -181,9 +185,11 @@ class App: AppCenterApplication {
         if FeedbackWindow.shared == nil { _ = FeedbackWindow() }
     }
 
+    #if DEBUG
     private static func initializeDebugWindowIfNeeded() {
         if DebugWindow.shared == nil { _ = DebugWindow() }
     }
+    #endif
 
     private static func initializePermissionsWindowIfNeeded() {
         if PermissionsWindow.shared == nil { _ = PermissionsWindow() }
@@ -421,7 +427,9 @@ class App: AppCenterApplication {
             App.updaterController?.startUpdater()
         }
         PreferencesEvents.initialize()
+        #if DEBUG
         BenchmarkRunner.startIfNeeded()
+        #endif
         showSettingsWindowOnFirstLaunchIfNeeded()
         if pendingShowSettingsWindow {
             pendingShowSettingsWindow = false

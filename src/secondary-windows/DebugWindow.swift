@@ -1,3 +1,4 @@
+#if DEBUG
 import Cocoa
 
 class DebugWindow: NSPanel {
@@ -451,3 +452,4 @@ class DebugWindow: NSPanel {
         return "\(title)\n" + rows.map { "• \($0.0): \($0.1)" }.joined(separator: "\n")
     }
 }
+#endif
