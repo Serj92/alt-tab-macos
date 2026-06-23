@@ -423,9 +423,8 @@ class App: AppCenterApplication {
             startingUpdater: false,
             updaterDelegate: App.sparkleDelegate!,
             userDriverDelegate: nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-            App.updaterController?.startUpdater()
-        }
+        // Fork: do not auto-start Sparkle — no scheduled/background update checks.
+        // (Feed is also nil'd in SparkleDelegate, so no path can ever pull an official build.)
         PreferencesEvents.initialize()
         #if DEBUG
         BenchmarkRunner.startIfNeeded()

@@ -24,7 +24,10 @@ class SparkleDelegate: NSObject, SPUUpdaterDelegate {
     var onNextCheckCompletion: ((UpdateCheckResult) -> Void)?
 
     func feedURLString(for updater: SPUUpdater) -> String? {
-        return Endpoints.appcastUrl
+        // Fork: no update feed. This is the only feed source (Info.plist has no SUFeedURL) for every
+        // update check — background, manual, and feedback-preflight. Returning nil means nothing can
+        // ever be found or downloaded, so the fork can never be replaced by an official build.
+        return nil
     }
 
     func feedParameters(for updater: SPUUpdater, sendingSystemProfile sendingProfile: Bool) -> [[String: String]] {
