@@ -106,7 +106,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **538 tests, exactly 18 failures**
+### Expected: **617 tests, exactly 18 failures**
 
 All 18 failures are in `LicenseManagerTests` and are **expected** — those tests assert
 upstream's trial / trial-expired behavior, but the **Pro-unlock** local patch forces
@@ -137,4 +137,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.3.1** (2026-06-23).*
+*Last synced to upstream: **v11.4.3** (2026-07-12).*
