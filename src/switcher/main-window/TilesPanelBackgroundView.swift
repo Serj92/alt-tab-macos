@@ -1,47 +1,27 @@
+protocol EffectView: NSView {
+    func updateAppearance()
+    /// Where `TilesView` places its content (scroll view, search field, empty-state label).
+    /// For `NSVisualEffectView` that's the view itself; for `NSGlassEffectView` it's `contentView`,
+    /// the only place Apple guarantees rendering for embedded views.
+    var hostView: NSView { get }
+}
+
 #if compiler(>=6.2)
 @available(macOS 26.0, *)
-class LiquidGlassEffectView: NSGlassEffectView, EffectView {
-    private typealias SetVariantType = @convention(c) (AnyObject, Selector, Int) -> Void
-    private static let setVariantSelector = NSSelectorFromString("set_variant:")
-
-    private static let canUsePrivateLiquidGlassLookCached: Bool = {
-        let method = class_getInstanceMethod(object_getClass(NSGlassEffectView()), setVariantSelector)
-        return method != nil
-    }()
-
-    static func canUsePrivateLiquidGlassLook() -> Bool { canUsePrivateLiquidGlassLookCached }
-
-    convenience init(_ clear: Bool) {
-        self.init()
-        if clear {
-            style = .clear
-            safeSetVariant(3)
-        } else {
-            style = .regular
-        }
-        updateAppearance()
-        wantsLayer = true
-        // without this, there are weird shadows around the corners
-        layer!.masksToBounds = true
-    }
-
-    func safeSetVariant(_ value: Int) {
-        if let method = class_getInstanceMethod(object_getClass(self), LiquidGlassEffectView.setVariantSelector) {
-            let methodImplementation = method_getImplementation(method)
-            let f = unsafeBitCast(methodImplementation, to: SetVariantType.self)
-            f(self, LiquidGlassEffectView.setVariantSelector, value)
-        }
-    }
-
+extension NSGlassEffectView: EffectView {
     func updateAppearance() {
         cornerRadius = Appearance.windowCornerRadius
     }
+
+    var hostView: NSView { contentView! }
 }
 #endif
 
 class FrostedGlassEffectView: NSVisualEffectView, EffectView {
-    convenience init(_: Int?) {
-        self.init()
+    var hostView: NSView { self }
+
+    convenience init() {
+        self.init(frame: .zero)
         blendingMode = .behindWindow
         state = .active
         wantsLayer = true
@@ -73,9 +53,29 @@ class FrostedGlassEffectView: NSVisualEffectView, EffectView {
     }
 }
 
-protocol EffectView: NSView {
-    func updateAppearance()
+#if compiler(>=6.2)
+/// The App Icons style uses the private `set_variant:` on `NSGlassEffectView` to get the macOS
+/// Cmd-Tab-like clear glass look. `style = .clear` alone renders nearly fully transparent, so the
+/// variant is what makes the panel visible. Lives here as a free helper (no NSGlassEffectView subclass).
+enum LiquidGlass {
+    private static let setVariantSelector = NSSelectorFromString("set_variant:")
+    private typealias SetVariantFn = @convention(c) (AnyObject, Selector, Int) -> Void
+
+    static let canUsePrivateLook: Bool = {
+        if #available(macOS 26.0, *) {
+            return class_getInstanceMethod(object_getClass(NSGlassEffectView()), setVariantSelector) != nil
+        }
+        return false
+    }()
+
+    @available(macOS 26.0, *)
+    static func applyClearVariant(_ view: NSGlassEffectView) {
+        guard let method = class_getInstanceMethod(object_getClass(view), setVariantSelector) else { return }
+        let f = unsafeBitCast(method_getImplementation(method), to: SetVariantFn.self)
+        f(view, setVariantSelector, 3)
+    }
 }
+#endif
 
 enum EffectViewKind {
     case frosted
@@ -87,7 +87,7 @@ func requiredEffectViewKind() -> EffectViewKind {
     #if compiler(>=6.2)
     if #available(macOS 26.0, *) {
         if Preferences.effectiveAppearanceStyle(SwitcherSession.activeShortcutIndex) == .appIcons,
-           LiquidGlassEffectView.canUsePrivateLiquidGlassLook() {
+           LiquidGlass.canUsePrivateLook {
             return .liquidGlassClear
         }
         return .liquidGlassRegular
@@ -96,32 +96,43 @@ func requiredEffectViewKind() -> EffectViewKind {
     return .frosted
 }
 
+#if compiler(>=6.2)
+@available(macOS 26.0, *)
+private func makeGlassEffectView(clear: Bool) -> NSGlassEffectView {
+    let glass = NSGlassEffectView()
+    glass.style = clear ? .clear : .regular
+    if clear {
+        LiquidGlass.applyClearVariant(glass)
+    }
+    // NSGlassEffectView only renders views embedded in `contentView`; this single host holds the
+    // scroll view, search field and empty-state label so they all sit inside the glass.
+    glass.contentView = NSView()
+    glass.updateAppearance()
+    // without this, there are weird shadows around the corners (most visible with .regular glass)
+    glass.wantsLayer = true
+    glass.layer!.masksToBounds = true
+    return glass
+}
+#endif
+
 func makeEffectView(for kind: EffectViewKind) -> EffectView {
     #if compiler(>=6.2)
     if #available(macOS 26.0, *) {
         switch kind {
             case .liquidGlassClear:
-                Logger.debug { "Creating LiquidGlassEffectView(true)" }
-                return LiquidGlassEffectView(true)
+                return makeGlassEffectView(clear: true)
             case .liquidGlassRegular:
                 if Preferences.effectiveAppearanceStyle(SwitcherSession.activeShortcutIndex) == .appIcons {
                     Logger.error {
                         let os = ProcessInfo.processInfo.operatingSystemVersion
-                        let version = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
-                        return "Private API set_variant is no longer available. macOS version: \(version))"
+                        return "Private API set_variant is no longer available. macOS version: \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
                     }
                 }
-                Logger.debug { "Creating LiquidGlassEffectView(false)" }
-                return LiquidGlassEffectView(false)
+                return makeGlassEffectView(clear: false)
             case .frosted:
                 break
         }
     }
     #endif
-    Logger.debug { "Creating FrostedGlassEffectView(nil)" }
-    return FrostedGlassEffectView(nil)
-}
-
-func makeAppropriateEffectView() -> EffectView {
-    makeEffectView(for: requiredEffectViewKind())
+    return FrostedGlassEffectView()
 }

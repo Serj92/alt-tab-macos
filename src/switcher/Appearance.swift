@@ -92,7 +92,7 @@ class Appearance {
         }
         // for Liquid Glass, we don't want a shadow around the panel
         #if compiler(>=6.2)
-        if #available(macOS 26.0, *), currentStyle == .appIcons && LiquidGlassEffectView.canUsePrivateLiquidGlassLook() {
+        if #available(macOS 26.0, *), currentStyle == .appIcons && LiquidGlass.canUsePrivateLook {
             enablePanelShadow = false
         } else {
             enablePanelShadow = true
