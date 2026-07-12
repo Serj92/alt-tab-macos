@@ -30,7 +30,7 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 
 | Area | What | Where |
 |---|---|---|
-| **Pro unlock** | `isProAvailable=true`, `isProLocked=false`, `computeState()=.pro` | `src/pro/license/LicenseManager.swift` |
+| **Pro unlock** | `isProAvailable=true`, `isProLocked=false`, `computeState()=.pro` (→ 18 expected `LicenseManagerTests` failures, see [Running tests](#running-tests)) | `src/pro/license/LicenseManager.swift` |
 | **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped | `SettingsWindow`, `TilesView`, `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow` |
 | **Perf micro-opts** | forward focus bookkeeping (rapid Cmd+Tab); SCWindow indexing by id (avoid O(n²)); `Appearance.resolvedStyle` cache for the tile render hot path | `App.swift`, `WindowCaptureEvents.swift`, `Appearance.swift`, `TilesView.swift` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
@@ -90,6 +90,30 @@ bash ai/run.sh     # self-terminating `--benchmark showUi 3` smoke run; prints a
 
 Debug keeps the `--benchmark` CLI and the debug windows for development. Don't ship it
 as the daily driver (unoptimized + debug machinery loaded).
+
+---
+
+## Running tests
+
+`xcodebuild test` **fails to run the suite** here — its test host can't load the built
+bundle (`unit-tests.xctest` → "executable not found"), a CLI hosting quirk on this
+Xcode-16 setup (the bundle itself is fine; it's the runner). Build the bundle and run it
+directly instead:
+
+```bash
+xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
+  -derivedDataPath DerivedDataTest CURRENT_PROJECT_VERSION=0.0.0 MARKETING_VERSION=0.0.0
+xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
+```
+
+### Expected: **538 tests, exactly 18 failures**
+
+All 18 failures are in `LicenseManagerTests` and are **expected** — those tests assert
+upstream's trial / trial-expired behavior, but the **Pro-unlock** local patch forces
+`state = .pro` (see [Local patches](#local-patches-carried-on-top-of-upstream)). So a
+healthy fork run = **zero failures outside `LicenseManagerTests`**. A failure anywhere
+else — or a count other than 18 inside `LicenseManagerTests` — is a real regression worth
+investigating (e.g. after an upstream merge).
 
 ---
 
