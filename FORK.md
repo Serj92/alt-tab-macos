@@ -31,8 +31,8 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | Area | What | Where |
 |---|---|---|
 | **Pro unlock** | `isProAvailable=true`, `isProLocked=false`, `computeState()=.pro` (→ 18 expected `LicenseManagerTests` failures, see [Running tests](#running-tests)) | `src/pro/license/LicenseManager.swift` |
-| **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped | `SettingsWindow`, `TilesView`, `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow` |
-| **Perf micro-opts** | forward focus bookkeeping (rapid Cmd+Tab); SCWindow indexing by id (avoid O(n²)); `Appearance.resolvedStyle` cache for the tile render hot path | `App.swift`, `WindowCaptureEvents.swift`, `Appearance.swift`, `TilesView.swift` |
+| **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped; the macOS-26-only `SCScreenshotManager.captureScreenshot` path falls back to `captureSampleBuffer` (runtime-equivalent on macOS 15) | `SettingsWindow`, `TilesView`, `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow`, `WindowCaptureEvents` |
+| **Perf micro-opts** | SCWindow indexing by id (avoid O(n²)); `Appearance.resolvedStyle` cache for the tile render hot path. ~~forward focus bookkeeping (rapid Cmd+Tab)~~ — dropped at v11.4.4: upstream's `ActivationFocusResolver` intent mechanism (#5596) covers the race, and the manual `frontmostPid` forward-set would break its `frontmostPid != pid` intent-recording guard | `WindowCaptureEvents.swift`, `Appearance.swift`, `TilesView.swift` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
 | **Debug-strip** | gate `DebugWindow` (the "Debug tools" window) + its menubar item + `BenchmarkRunner` behind `#if DEBUG` so a **Release** build carries no debug machinery (QAMenu + DebugMenu live-graph were already `#if DEBUG`) | `App.swift`, `Menubar.swift`, `DebugWindow.swift`, `Benchmark.swift` |
 | **No auto-update** | `SparkleDelegate.feedURLString` returns `nil` (the only feed source — Info.plist has no `SUFeedURL`) and the 30s post-launch `startUpdater()` is removed, so the fork can never replace itself with an official build | `src/vendors/SparkleDelegate.swift`, `App.swift` |
@@ -106,7 +106,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **617 tests, exactly 18 failures**
+### Expected: **880 tests, exactly 18 failures**
 
 All 18 failures are in `LicenseManagerTests` and are **expected** — those tests assert
 upstream's trial / trial-expired behavior, but the **Pro-unlock** local patch forces
@@ -137,4 +137,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.4.3** (2026-07-12).*
+*Last synced to upstream: **v11.4.4** (2026-08-06).*
