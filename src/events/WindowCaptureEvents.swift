@@ -114,14 +114,20 @@ class WindowCaptureScreenshots {
             // avoids the churn but fails (SCStreamError -3811) on fullscreen windows whose Space is inactive, so
             // that one case stays on captureSampleBuffer. Its CGImage copy (vs a shared IOSurface) is acceptable
             // even at full resolution now that Preview frames are fetched lazily, a few per session (#5861).
+            #if compiler(>=6.2)
             if #available(macOS 26.0, *), !request.isFullscreen {
                 captureScreenshot(filter, config, window, source, request.fullRes)
             } else {
                 captureSampleBuffer(filter, config, window, source, request.fullRes)
             }
+            #else
+            // Xcode 16 SDK has no SCScreenshotConfiguration; macOS 26 is required at runtime anyway
+            captureSampleBuffer(filter, config, window, source, request.fullRes)
+            #endif
         }
     }
 
+    #if compiler(>=6.2)
     @available(macOS 26.0, *)
     private static func captureScreenshot(_ filter: SCContentFilter, _ streamConfig: SCStreamConfiguration, _ window: Window, _ source: RefreshCausedBy, _ fullRes: Bool) {
         let config = SCScreenshotConfiguration()
@@ -139,6 +145,7 @@ class WindowCaptureScreenshots {
             deliver(window, source, .cgImage(cgImage), fullRes)
         }
     }
+    #endif
 
     private static func captureSampleBuffer(_ filter: SCContentFilter, _ config: SCStreamConfiguration, _ window: Window, _ source: RefreshCausedBy, _ fullRes: Bool) {
         SCScreenshotManager.captureSampleBuffer(contentFilter: filter, configuration: config) { [weak window] sampleBuffer, error in
