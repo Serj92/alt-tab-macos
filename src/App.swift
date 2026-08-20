@@ -433,8 +433,11 @@ class App: AppCenterApplication {
         // The one initial window inventory; later ones ride events + switcher shows. It belongs here, not in
         // the WindowServer tap: the tap is installed before the permission gate, and this needs `Spaces.refresh`
         // to have run (the sweep bails on an empty Space list). Deferred a beat so it doesn't compete with the
-        // rest of launch.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        // rest of launch, which is done ~145ms in (the last line of this method logs there).
+        // 0.25s, measured to a complete window list on an idle machine over 5 launches each: 1s → 1918ms,
+        // 0.25s → 1208ms, 0.1s → 911ms. The 0.1s figure is real but leaves no margin over that 145ms tail,
+        // and the case that matters is a login-item start, where the whole system is competing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             Applications.manuallyRefreshAllWindows()
             // Seed the MRU from screen stacking HERE, off the critical path, rather than only on the first
             // summon: the query blocks, so its answer lands after that summon's first render and the user
