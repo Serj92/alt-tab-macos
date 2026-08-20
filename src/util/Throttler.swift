@@ -2,7 +2,13 @@ import Cocoa
 
 class Throttler {
     private let delayInNanoseconds: UInt64
-    private var lastTimeInNanoseconds = DispatchTime.now().uptimeNanoseconds
+    /// `nil` until the first run: a just-constructed throttler has NOT fired. Seeding it with `now`
+    /// instead made the first call ever land in the window and get pushed a full delay — measured at
+    /// launch as ~1.0s added to `Applications.manuallyRefreshAllWindows`, on top of the 1s that
+    /// `App.applicationDidFinishLaunching` already defers it by, so the switcher had no windows for ~3s.
+    /// `ThrottleDecision` documents the leading edge (`testThrottleFirstCallRunsNow`) and
+    /// `ThrottlerWithKey` gets it for free (no map entry yet); this is the same state, spelled out.
+    private var lastTimeInNanoseconds: UInt64? = nil
     private var nextScheduled = false
 
     init(delayInMs: Int) {
