@@ -2,7 +2,6 @@ import Cocoa
 import Darwin
 import ShortcutRecorder
 import AppCenterCrashes
-import Sparkle
 
 class App: AppCenterApplication {
     /// periphery:ignore
@@ -32,8 +31,6 @@ class App: AppCenterApplication {
     // periphery:ignore
     private static var appCenterDelegate: AppCenterCrash?
     // periphery:ignore
-    static var sparkleDelegate: SparkleDelegate?
-    static var updaterController: SPUStandardUpdaterController?
     // don't queue multiple delayed rebuildUi() calls
     private static var delayedDisplayScheduled = 0
     private static let switcherUiRefreshThrottler = Throttler(delayInMs: 200)
@@ -107,10 +104,6 @@ class App: AppCenterApplication {
         focusSelectedWindow(selectedWindow)
     }
 
-    @objc static func checkForUpdatesNow(_ sender: NSMenuItem) {
-        GeneralTab.checkForUpdatesNow(sender)
-    }
-
     @objc static func checkPermissions(_ sender: NSMenuItem) {
         showPermissionsWindow()
     }
@@ -130,8 +123,7 @@ class App: AppCenterApplication {
     @objc static func showFeedbackPanel() {
         let wasFresh = FeedbackWindow.shared == nil
         initializeFeedbackWindowIfNeeded()
-        // Fresh init already runs reset(); skip the redundant second call so we don't
-        // double-fire the Sparkle preflight on the first ever open.
+        // Fresh init already runs reset(); skip the redundant second call.
         if !wasFresh { FeedbackWindow.shared?.reset() }
         showSecondaryWindow(FeedbackWindow.shared!)
     }
@@ -455,13 +447,6 @@ class App: AppCenterApplication {
         CursorEvents.observe()
         TrackpadEvents.observe()
         CliEvents.observe()
-        App.sparkleDelegate = SparkleDelegate()
-        App.updaterController = SPUStandardUpdaterController(
-            startingUpdater: false,
-            updaterDelegate: App.sparkleDelegate!,
-            userDriverDelegate: nil)
-        // Fork: do not auto-start Sparkle — no scheduled/background update checks.
-        // (Feed is also nil'd in SparkleDelegate, so no path can ever pull an official build.)
         PreferencesEvents.initialize()
         #if DEBUG
         BenchmarkRunner.startIfNeeded()

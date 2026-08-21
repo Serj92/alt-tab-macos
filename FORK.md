@@ -37,11 +37,10 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | **Launch inventory sooner** | The one initial window inventory was deferred 1s after launch; the rest of launch is done ~145ms in, so most of that was idle waiting. Now 0.25s, which still clears the launch tail with margin. Measured to a complete window list, 5 launches each: 1s → 1918ms, 0.25s → 1208ms (0.1s → 911ms, rejected: no margin over the 145ms tail, and a login-item start competes with the whole system) | `src/App.swift` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
 | **Debug-strip** | gate `DebugWindow` (the "Debug tools" window) + its menubar item + `BenchmarkRunner` behind `#if DEBUG` so a **Release** build carries no debug machinery (QAMenu + DebugMenu live-graph were already `#if DEBUG`) | `App.swift`, `Menubar.swift`, `DebugWindow.swift`, `Benchmark.swift` |
-| **No auto-update** | `SparkleDelegate.feedURLString` returns `nil` (the only feed source — Info.plist has no `SUFeedURL`) and the 30s post-launch `startUpdater()` is removed, so the fork can never replace itself with an official build | `src/vendors/SparkleDelegate.swift`, `App.swift` |
+| **No auto-update** | Sparkle is removed entirely: the local SwiftPM package, the framework and its `Updater.app`/`Autoupdate` helpers, `SparkleDelegate`, the `UserDefaultsEvents` class (it existed only to mirror Sparkle's own checkbox back into `updatePolicy`), the menubar's "Check for updates…", the Settings updates-policy row, and the feedback window's pre-form update check. The `updatePolicy` preference itself is left defined but unused, to keep `MacroPreferences` / migrations untouched. Bundle 12MB → 9.5MB. The fork could never update itself anyway (nil feed), so nothing is lost — the feedback window shows its form directly instead of after a check that could only ever fail | `App.swift`, `Menubar.swift`, `GeneralTab.swift`, `PreferencesEvents.swift`, `FeedbackWindow.swift`, `Info.plist`, `project.pbxproj` |
 
-> The "Check for updates…" menubar item and the Settings button still exist but are
-> defanged by the nil feed — they can't download anything. Remove them too if you want
-> them gone from the UI (a couple more small edits).
+> `vendor/Sparkle` is still checked in — it is simply not referenced by the target. Deleting it
+> would be a large diff against upstream for no build-time or runtime gain.
 
 ---
 
