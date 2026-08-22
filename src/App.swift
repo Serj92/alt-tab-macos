@@ -485,15 +485,18 @@ extension App: NSApplicationDelegate {
         // `registerDefaults()` (they read raw plist values), which `initialize()` already guarantees.
         // This only touches UserDefaults + TIS (main-thread), so it depends on nothing below.
         Preferences.initialize()
-        // Handle the "move to /Applications" prompt before anything else sets up the model. It runs a modal
-        // alert (and may relaunch + exit), both of which pump the main run loop, so it must come before the
-        // WindowServer tap below: otherwise the tap's queued window discovery drains re-entrantly during the
-        // modal and builds a Window while the model is half-built. A translocated instance the user moves
-        // relaunches from /Applications, so the setup we skip by returning here early is thrown away anyway.
+        // fork-local: `MoveToApplicationsFolder.promptIfNeeded()` used to run here, on the Release
+        // side of this #if. This fork is only ever installed by `ai/install.sh`, which copies
+        // straight to /Applications, so the prompt has nothing to offer — and it cost something: a
+        // Release build launched from anywhere else (a probe build for an A/B measurement, say)
+        // offered to relocate itself, and relocating is what invalidates the measurement. Upstream
+        // also had to place the call exactly here, because its modal alert pumps the main run loop
+        // and the WindowServer tap installed below would otherwise drain a queued window discovery
+        // re-entrantly, building a Window against a half-built model. Not calling it removes that
+        // ordering constraint too. The type stays in the tree, simply uncalled, so the diff against
+        // upstream is this comment.
         #if DEBUG
         UserDefaults.standard.set(true, forKey: "NSConstraintBasedLayoutVisualizeMutuallyExclusiveConstraints")
-        #else
-        MoveToApplicationsFolder.promptIfNeeded()
         #endif
         // The WindowServer event tap is CGS-only (needs no Accessibility, no Preferences, no model), so
         // install it before licensing / the permission gate. The skeleton is then available immediately and
