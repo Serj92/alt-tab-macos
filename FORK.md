@@ -44,6 +44,23 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 
 ---
 
+## Cherry-picked upstream PRs (not merged upstream yet)
+
+Open PRs on `lwouis/alt-tab-macos` that are applied here ahead of upstream. Unlike the
+local patches above, these are **temporary**: when upstream merges one, the next
+`git merge upstream/master` brings the same change in again — **drop our copy then**
+(`git rebase --onto` / revert), don't try to keep both.
+
+| PR | What | Files | Notes |
+|---|---|---|---|
+| [#5967](https://github.com/lwouis/alt-tab-macos/pull/5967) | A shortcut could not be assigned because an *unrelated* pre-existing conflict between two other shortcuts was counted against it | `CustomRecorderControlTestable.swift` | Applied clean. +1 test |
+| [#5932](https://github.com/lwouis/alt-tab-macos/pull/5932) | New **XS** and **XL** appearance sizes (all 3 styles), with a preferences migration for the shifted stored indexes | `MacroPreferences.swift`, `Appearance.swift`, `PreferencesMigrations.swift`, `AppearanceTab.swift`, `LabelAndControl.swift`, `TileView.swift`, +6 | One conflict in `TileView.swift`: the PR predates upstream's `Appearance.resolvedStyle` cache, so it still called `Preferences.effectiveAppearanceStyle(…)`. Resolved to our `resolvedStyle` + the PR's `resolvedSize.isLargeOrAbove`. +5 tests |
+
+Both are cherry-picks, so they keep their original authors; upstream's own merge of them
+will not be recognised as a duplicate by git.
+
+---
+
 ## Signing & identity — `config/local.xcconfig`
 
 This file is **gitignored** and `#include?`-ed last by both `config/debug.xcconfig`
@@ -107,7 +124,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **932 tests, exactly 18 failures**
+### Expected: **938 tests, exactly 18 failures**
 
 All 18 failures are in `LicenseManagerTests` and are **expected** — those tests assert
 upstream's trial / trial-expired behavior, but the **Pro-unlock** local patch forces
@@ -127,11 +144,13 @@ git merge upstream/master            # 3-way; has been conflict-free so far
 
 Then:
 
-1. **Re-apply `#if compiler(>=6.2)` guards** on any *new* macOS-26 / Liquid Glass /
+1. **Drop any [cherry-picked upstream PR](#cherry-picked-upstream-prs-not-merged-upstream-yet)
+   that has since been merged upstream** — otherwise the change is applied twice.
+2. **Re-apply `#if compiler(>=6.2)` guards** on any *new* macOS-26 / Liquid Glass /
    Swift-6.2 code upstream introduced (the big risk area: settings UI, new files).
-2. `bash ai/build.sh` until it compiles on Xcode 16 (fix any new compat issues).
-3. `bash ai/install.sh` to rebuild the Release daily driver and install it.
-4. Sanity-check: rapid Cmd+Tab + your usual flow.
+3. `bash ai/build.sh` until it compiles on Xcode 16 (fix any new compat issues).
+4. `bash ai/install.sh` to rebuild the Release daily driver and install it.
+5. Sanity-check: rapid Cmd+Tab + your usual flow.
 
 Note: `ai/build.sh` signing fails with `No certificate matching 'Local Self-Signed'`
 only when `config/local.xcconfig` is missing — recreate it (see above).
