@@ -10,6 +10,10 @@ final class LicenseManagerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // fork-local: the app forces Pro (see `LicenseManager.forceProUnlock`), which would make
+        // every assertion below about trials and expiry fail. Turn the force off so these tests
+        // exercise the licensing logic upstream actually wrote.
+        LicenseManager.forceProUnlock = false
         suiteName = "test-license-\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)!
         clock = MockClock(now: Date(timeIntervalSince1970: 1_700_000_000))
@@ -19,6 +23,7 @@ final class LicenseManagerTests: XCTestCase {
     }
 
     override func tearDown() {
+        LicenseManager.forceProUnlock = true // fork-local, see setUp
         UserDefaults().removePersistentDomain(forName: suiteName)
         super.tearDown()
     }

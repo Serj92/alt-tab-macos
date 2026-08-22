@@ -30,7 +30,7 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 
 | Area | What | Where |
 |---|---|---|
-| **Pro unlock** | `isProAvailable=true`, `isProLocked=false`, `computeState()=.pro` (→ 18 expected `LicenseManagerTests` failures, see [Running tests](#running-tests)) | `src/pro/license/LicenseManager.swift` |
+| **Pro unlock** | `LicenseManager.forceProUnlock = true` short-circuits `isProAvailable` / `isProLocked` / `computeState()`. Upstream's real bodies are kept behind the flag rather than deleted, so `LicenseManagerTests` can turn it off in `setUp` and still test them — which is why a full run is green (see [Running tests](#running-tests)) | `src/pro/license/LicenseManager.swift`, `src/pro/license/LicenseManagerTests.swift` |
 | **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped; the macOS-26-only `SCScreenshotManager.captureScreenshot` path falls back to `captureSampleBuffer` (runtime-equivalent on macOS 15) | `SettingsWindow`, `TilesView`, `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow`, `WindowCaptureEvents` |
 | **Perf micro-opts** | SCWindow indexing by id (avoid O(n²)); `Appearance.resolvedStyle` cache for the tile render hot path. ~~forward focus bookkeeping (rapid Cmd+Tab)~~ — dropped at v11.4.4: upstream's `ActivationFocusResolver` intent mechanism (#5596) covers the race, and the manual `frontmostPid` forward-set would break its `frontmostPid != pid` intent-recording guard | `WindowCaptureEvents.swift`, `Appearance.swift`, `TilesView.swift` |
 | **Throttler leading edge** | `Throttler` seeded `lastTimeInNanoseconds` with `now` in its constructor, so the FIRST call ever was read as a repeat and pushed a full window. At launch that added ~1.0s to `Applications.manuallyRefreshAllWindows` (already deferred 1s by `applicationDidFinishLaunching`), so the switcher listed no windows for ~3s after start — Cmd+Tab in that window opened it empty. Now `nil` until the first run, which is the leading edge `SchedulingPolicySpecs.md` documents (`testThrottleFirstCallRunsNow`) and `ThrottlerWithKey` already gets from having no map entry. Measured launch → non-empty `--list`: **3.02s → 1.89s** (3 runs each). No unit seam: compiling `Throttler` into the test bundle drags `BackgroundWork` + the AX/CGS/Process schedulers with it | `src/util/Throttler.swift` |
@@ -138,14 +138,18 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **940 tests, exactly 18 failures**
+### Expected: **940 tests, 0 failures**
 
-All 18 failures are in `LicenseManagerTests` and are **expected** — those tests assert
-upstream's trial / trial-expired behavior, but the **Pro-unlock** local patch forces
-`state = .pro` (see [Local patches](#local-patches-carried-on-top-of-upstream)). So a
-healthy fork run = **zero failures outside `LicenseManagerTests`**. A failure anywhere
-else — or a count other than 18 inside `LicenseManagerTests` — is a real regression worth
-investigating (e.g. after an upstream merge).
+Any failure is a real regression. Nothing here is "expected to be red".
+
+This used to read *"932 tests, exactly 18 failures, all in `LicenseManagerTests`"*: the
+Pro-unlock patch had deleted upstream's licensing bodies outright, so every test asserting
+trial / expiry behaviour failed by construction. That baseline had to be remembered and
+re-checked by eye after each upstream merge, and — worse — a genuine regression inside
+`LicenseManagerTests` was invisible unless the failure count moved off 18. The patch now
+keeps upstream's bodies behind `LicenseManager.forceProUnlock`, which the test class turns
+off in `setUp` and restores in `tearDown`. The app never touches the flag, so the shipped
+behaviour is unchanged: Pro is still unconditionally on.
 
 ---
 

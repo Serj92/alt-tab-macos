@@ -59,9 +59,27 @@ class LicenseManager {
         return Self.lifetimeVariants.contains(variant)
     }
 
-    var isProAvailable: Bool { true }
+    /// fork-local: this fork ships Pro unconditionally. The flag exists so the three members below
+    /// keep upstream's real bodies instead of having them deleted — `LicenseManagerTests` flips it
+    /// off in `setUp` and exercises the trial / expiry logic upstream wrote, which is what makes a
+    /// full run green (see FORK.md, "Running tests"). It is never flipped by the app itself.
+    static var forceProUnlock = true
 
-    var isProLocked: Bool { false }
+    var isProAvailable: Bool {
+        if Self.forceProUnlock { return true }
+        return state.isProAvailable
+    }
+
+    /// Pro features are locked out as soon as the license is no longer valid. Degradable Pro
+    /// preferences are downgraded to their Free equivalents immediately via
+    /// `ProTransitionManager.onProLockEngaged()`, wired to the state-change hook in App.swift.
+    var isProLocked: Bool {
+        if Self.forceProUnlock { return false }
+        switch state {
+        case .pro, .trial: return false
+        case .proExpired, .trialExpired: return true
+        }
+    }
 
     var trialStartDate: Date? {
         guard defaults.object(forKey: "trialStartDate") != nil else { return nil }
@@ -169,7 +187,20 @@ class LicenseManager {
     }
 
     func computeState() -> LicenseState {
-        return .pro
+        if Self.forceProUnlock { return .pro }
+        if keychain.value(account: Self.keychainKeyAccount) != nil {
+            let lastValidationResult = defaults.bool(forKey: "lastValidationResult")
+            guard lastValidationResult else { return .trialExpired }
+            if let variant = keychain.value(account: Self.keychainVariantAccount),
+               let maxVersion = Self.versionLimitedVariants[variant] {
+                let currentVersion = currentAppVersion()
+                if currentVersion.compare(maxVersion, options: .numeric) == .orderedDescending {
+                    return .proExpired
+                }
+            }
+            return .pro
+        }
+        return computeTrialState()
     }
 
     private func computeTrialState() -> LicenseState {
