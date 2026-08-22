@@ -23,6 +23,11 @@ class PreferencesMigrations {
                 updateToNewPreferences(versionInPlist)
             }
         }
+        // fork-local: this fork carries upstream PR #5932 ahead of any upstream release, so
+        // `App.version` stays at the last released version and the 11.4.4 version gate above can
+        // never fire for it. Call it unconditionally instead; it is flag-guarded, so the version
+        // gate calling it too (once the PR lands upstream) cannot shift the indexes twice.
+        migrateAppearanceSizeIndexes()
         Self.defaults.set(App.version, forKey: preferencesKey)
     }
 
@@ -102,11 +107,18 @@ class PreferencesMigrations {
         }
     }
 
+    /// fork-local: makes `migrateAppearanceSizeIndexes` run at most once per install, because the
+    /// fork calls it outside the version gate (see `migratePreferences`). Shifting twice would
+    /// silently move the user's size two notches up, so this guard is what makes that call safe.
+    static let appearanceSizeIndexesMigratedKey = "fork.migratedAppearanceSizeIndexes"
+
     // AppearanceSizePreference gained extraSmall (first) and extraLarge (before auto); stored indexes need remapping
     // before: small 0, medium 1, large 2, auto 3
     // after: extraSmall 0, small 1, medium 2, large 3, extraLarge 4, auto 5
     // this runs before registerDefaults(), so an unset override stays unset, which hasOverride() relies on
     static func migrateAppearanceSizeIndexes() {
+        guard !Self.defaults.bool(forKey: appearanceSizeIndexesMigratedKey) else { return }
+        defer { Self.defaults.set(true, forKey: appearanceSizeIndexesMigratedKey) }
         let oldToNew = ["0": "1", "1": "2", "2": "3", "3": "5"]
         let keys = ["appearanceSize"] + (0...Preferences.maxShortcutCount).map {
             Preferences.indexToName("appearanceSizeOverride", $0)

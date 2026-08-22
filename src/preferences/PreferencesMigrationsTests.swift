@@ -283,6 +283,24 @@ final class PreferencesMigrationsTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: "appearanceSizeOverride"))
     }
 
+    // fork-local: `migratePreferences` calls this outside the version gate, so a second call must
+    // be a no-op. "small" is the input that exposes it: unguarded, 0 -> 1 -> 2 climbs to medium
+    func testAppearanceSizeIndexesShiftOnlyOnce() {
+        defaults.set("0", forKey: "appearanceSize") // small
+        PreferencesMigrations.migrateAppearanceSizeIndexes()
+        PreferencesMigrations.migrateAppearanceSizeIndexes()
+        XCTAssertEqual(defaults.string(forKey: "appearanceSize"), "1")
+    }
+
+    // fork-local: a value stored after the shift must survive a later call, even one that maps
+    // cleanly under the old table (here "1" would become "2" if the guard were missing)
+    func testAppearanceSizeAlreadyMigratedValueIsLeftAlone() {
+        PreferencesMigrations.migrateAppearanceSizeIndexes() // marks this install as migrated
+        defaults.set("1", forKey: "appearanceSize")          // user then picks small
+        PreferencesMigrations.migrateAppearanceSizeIndexes()
+        XCTAssertEqual(defaults.string(forKey: "appearanceSize"), "1")
+    }
+
     func testAppearanceSizeRemembersProSelectionAcrossTheShift() {
         let proDefaults = ProTransitionState.defaults
         proDefaults.set(3, forKey: "proTransition.rememberedAppearanceSize") // auto

@@ -38,6 +38,7 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
 | **Debug-strip** | gate `DebugWindow` (the "Debug tools" window) + its menubar item + `BenchmarkRunner` behind `#if DEBUG` so a **Release** build carries no debug machinery (QAMenu + DebugMenu live-graph were already `#if DEBUG`) | `App.swift`, `Menubar.swift`, `DebugWindow.swift`, `Benchmark.swift` |
 | **No auto-update** | Sparkle is removed entirely: the local SwiftPM package, the framework and its `Updater.app`/`Autoupdate` helpers, `SparkleDelegate`, the `UserDefaultsEvents` class (it existed only to mirror Sparkle's own checkbox back into `updatePolicy`), the menubar's "Check for updates…", the Settings updates-policy row, and the feedback window's pre-form update check. The `updatePolicy` preference itself is left defined but unused, to keep `MacroPreferences` / migrations untouched. Bundle 12MB → 9.5MB. The fork could never update itself anyway (nil feed), so nothing is lost — the feedback window shows its form directly instead of after a check that could only ever fail | `App.swift`, `Menubar.swift`, `GeneralTab.swift`, `PreferencesEvents.swift`, `FeedbackWindow.swift`, `Info.plist`, `project.pbxproj` |
+| **Fork-safe XS/XL migration** | Upstream PR #5932 version-gates `migrateAppearanceSizeIndexes` at 11.4.4, but the fork's `App.version` is derived from the last `chore(release):` commit, so it never rises above the stored `preferencesVersion` and the gate can never fire (raising the threshold instead would re-run the shift on *every* launch). Called unconditionally, guarded by a one-shot `fork.migratedAppearanceSizeIndexes` flag so upstream's own gate can't shift the indexes a second time once the PR lands. **Drop together with the #5932 cherry-pick** | `src/preferences/PreferencesMigrations.swift` |
 
 > `vendor/Sparkle` is still checked in — it is simply not referenced by the target. Deleting it
 > would be a large diff against upstream for no build-time or runtime gain.
@@ -54,7 +55,7 @@ local patches above, these are **temporary**: when upstream merges one, the next
 | PR | What | Files | Notes |
 |---|---|---|---|
 | [#5967](https://github.com/lwouis/alt-tab-macos/pull/5967) | A shortcut could not be assigned because an *unrelated* pre-existing conflict between two other shortcuts was counted against it | `CustomRecorderControlTestable.swift` | Applied clean. +1 test |
-| [#5932](https://github.com/lwouis/alt-tab-macos/pull/5932) | New **XS** and **XL** appearance sizes (all 3 styles), with a preferences migration for the shifted stored indexes | `MacroPreferences.swift`, `Appearance.swift`, `PreferencesMigrations.swift`, `AppearanceTab.swift`, `LabelAndControl.swift`, `TileView.swift`, +6 | One conflict in `TileView.swift`: the PR predates upstream's `Appearance.resolvedStyle` cache, so it still called `Preferences.effectiveAppearanceStyle(…)`. Resolved to our `resolvedStyle` + the PR's `resolvedSize.isLargeOrAbove`. +5 tests |
+| [#5932](https://github.com/lwouis/alt-tab-macos/pull/5932) | New **XS** and **XL** appearance sizes (all 3 styles), with a preferences migration for the shifted stored indexes | `MacroPreferences.swift`, `Appearance.swift`, `PreferencesMigrations.swift`, `AppearanceTab.swift`, `LabelAndControl.swift`, `TileView.swift`, +6 | One conflict in `TileView.swift`: the PR predates upstream's `Appearance.resolvedStyle` cache, so it still called `Preferences.effectiveAppearanceStyle(…)`. Resolved to our `resolvedStyle` + the PR's `resolvedSize.isLargeOrAbove`. Its migration also needed a fork-local fix to run at all (see **Fork-safe XS/XL migration** above). +5 tests, +2 fork tests |
 
 Both are cherry-picks, so they keep their original authors; upstream's own merge of them
 will not be recognised as a duplicate by git.
@@ -124,7 +125,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **938 tests, exactly 18 failures**
+### Expected: **940 tests, exactly 18 failures**
 
 All 18 failures are in `LicenseManagerTests` and are **expected** — those tests assert
 upstream's trial / trial-expired behavior, but the **Pro-unlock** local patch forces
