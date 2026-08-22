@@ -74,6 +74,19 @@ CODE_SIGN_STYLE = Manual
 DEVELOPMENT_TEAM = T5V6W6793A
 CODE_SIGN_IDENTITY = Apple Development: seregaijko@gmail.com (88FBB4GZ5S)
 PROVISIONING_PROFILE_SPECIFIER =
+
+ARCHS = arm64
+```
+
+`ARCHS` is here and not in `config/release.xcconfig` on purpose: it keeps the diff
+against upstream at zero. Xcode's default `ARCHS_STANDARD` produced a fat binary whose
+x86_64 slice was **3.59 MB of a 9.5 MB bundle** — never executable on this Apple Silicon
+machine, and it made Release do all codegen twice. (Debug was already arm64-only via
+`ONLY_ACTIVE_ARCH`.) Verify with `lipo -info` on the built binary, or:
+
+```bash
+xcodebuild -project alt-tab-macos.xcodeproj -scheme Release -configuration Release \
+  -showBuildSettings | grep ' ARCHS '
 ```
 
 The distinct bundle id + this signing identity match the already-installed app, so a
