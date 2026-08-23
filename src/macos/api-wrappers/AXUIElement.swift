@@ -238,9 +238,12 @@ extension AXUIElement {
     /// discriminator that tab bar (role AXTabGroup, subrole nil), which it rightly rejected — so the launch
     /// scan consistently missed every TABBED window until the first show's rescan got luckier (rec17). The
     /// role read costs IPC only on the target's own descendants: other elements fail the cheap wid guard.
-    static func windowByBruteForce(_ pid: pid_t, _ wid: CGWindowID) -> AXUIElement? {
+    /// `from` anchors the sweep (`WindowAcquisitionPolicy.bruteForceStart`). Starting at 0 covers a window of
+    /// the id space pinned to wherever the app was hours ago; an app's window elements cluster, so a window we
+    /// already track names the band and the same budget lands on the target instead of short of it.
+    static func windowByBruteForce(_ pid: pid_t, _ wid: CGWindowID, from startId: AXUIElementID = 0) -> AXUIElement? {
         var found: AXUIElement?
-        bruteForceElements(pid) { candidate in
+        bruteForceElements(pid, from: startId) { candidate in
             // Cheap wid gate first, so the role read costs IPC only on the target's own descendants; the
             // root-vs-descendant verdict is the `BruteForceWindowMatch` kernel (#5849).
             guard (try? candidate.cgWindowId()) == wid else { return false }

@@ -135,12 +135,20 @@ class Applications {
         // owns the per-window membership map; here we only need the wid set.
         let allSpaceIds = Spaces.idsAndIndexes.map { $0.0 }
         guard !allSpaceIds.isEmpty else { return }
+        let currentSpaceId = Spaces.currentSpaceId
         CGSCallScheduler.run {
             let allSpaceWids = CGSCallScheduler.windowsInSpaces(allSpaceIds, true)
             // phantom detection reuses this same all-Space fetch (was a separate per-show CGS double-query
             // that also ran on the AX pool): a wid CGS omits from "visible" but keeps in "all" is alive-but-hidden.
             let visibleWids = Set(CGSCallScheduler.windowsInSpaces(allSpaceIds, false))
             let allWids = Set(allSpaceWids)
+            // Which Space a wid sits on picks its acquisition route (`WindowAcquisitionPolicy.route`), and
+            // getting that wrong is expensive: a brute force that finds nothing burns the whole 250ms budget
+            // before the wid can be rejected. With one Space the all-Space answer IS the current-Space answer,
+            // so the extra query is skipped rather than asked and thrown away.
+            let currentSpaceWids = allSpaceIds.count == 1
+                ? allWids
+                : Set(CGSCallScheduler.windowsInSpaces([currentSpaceId], true))
             let appWindows = WindowServerQuery.query(allSpaceWids).filter { WsWindowState.isApplicationWindowLevel($0) }
             DispatchQueue.main.async {
                 // Drain the confirmed-closed tombstones against the two lists we just fetched, BEFORE they
@@ -155,6 +163,15 @@ class Applications {
                 // wids still exist, and destroy events don't erase reliably. Before the loop below, so a
                 // pruned wid that IS still app-level is re-subscribed in this very pass.
                 WindowServerEvents.pruneSubscriptions(allWids)
+                // The anchor for any brute force this sweep needs: an app's window elements cluster, so its
+                // lowest known element id names the band. `AXUIElement.id()` reads the element's own id out of
+                // memory — no IPC — so this is a pointer read per tracked window, not a round trip per app.
+                var lowestKnownElementIdByPid = [pid_t: AXUIElementID]()
+                for window in Windows.list {
+                    guard let elementId = window.axUiElement?.id() else { continue }
+                    let pid = window.application.pid
+                    lowestKnownElementIdByPid[pid] = min(lowestKnownElementIdByPid[pid] ?? elementId, elementId)
+                }
                 for raw in appWindows {
                     // Opt in BEFORE the acquisition can reject it: subscribing costs nothing and commits to
                     // nothing, and a wid we skip here is one whose later re-show we cannot hear (see
@@ -170,8 +187,12 @@ class Applications {
                     // genuinely-new windows.
                     guard Windows.byWindowId[raw.wid]?.axUiElement == nil else { continue }
                     guard !widsConfirmedClosed.contains(raw.wid) else { continue }
+                    let route = WindowAcquisitionPolicy.route(isOnCurrentSpace: currentSpaceWids.contains(raw.wid))
+                    let bruteForceStart = WindowAcquisitionPolicy.bruteForceStart(
+                        lowestKnownId: lowestKnownElementIdByPid[raw.pid])
                     AXCallScheduler.shared.schedule(key: "wid-\(raw.wid)-acquire", context: app.debugId, pid: raw.pid, scan: true) {
-                        if let element = WindowDiscriminator.acquireElementOrReject(raw.wid, raw.pid, .otherSpaceViaBruteForce) {
+                        if let element = WindowDiscriminator.acquireElementOrReject(raw.wid, raw.pid, route,
+                                                                                    bruteForceStart: bruteForceStart) {
                             addDiscoveredWindow(element, raw, app)
                         }
                     }

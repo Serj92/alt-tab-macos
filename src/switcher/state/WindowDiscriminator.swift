@@ -62,8 +62,10 @@ class WindowDiscriminator {
     /// matched. That's a window CGS still lists but AX no longer backs — a transient that never ordered in
     /// (Joplin), or a window torn down between the snapshot and this read. Off-main (AX IPC), like the
     /// underlying `WindowElementAcquisition`.
-    static func acquireElementOrReject(_ wid: CGWindowID, _ pid: pid_t, _ route: WindowAcquisitionPolicy.Route) -> AXUIElement? {
-        guard let element = WindowElementAcquisition.element(for: wid, pid: pid, route: route) else {
+    static func acquireElementOrReject(_ wid: CGWindowID, _ pid: pid_t, _ route: WindowAcquisitionPolicy.Route,
+                                       bruteForceStart: AXUIElementID = 0) -> AXUIElement? {
+        guard let element = WindowElementAcquisition.element(for: wid, pid: pid, route: route,
+                                                             bruteForceStart: bruteForceStart) else {
             Logger.debug { "Window rejected (pid:\(pid) wid:\(wid)) because no live AX window element could be acquired for it" }
             return nil
         }
