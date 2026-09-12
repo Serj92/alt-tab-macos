@@ -86,6 +86,43 @@ feels slow again.
 
 ---
 
+## Measured: the dismissal's fat tail is `[NSWindow orderOut:]`
+
+Chasing "the speed feels inconsistent — sometimes it sticks, sometimes it's fine" (2026-09-13), with
+`MainThreadStall` at a 1ms threshold and marks around single statements.
+
+`TilesPanel.orderOut` on the visible dismissal path: **median 2-3ms, p90 ~20ms, max 350ms**, over ~110
+dismissals. One case timed end to end: the key was released at 00:43:06.668 and the panel was still up at
+00:43:07.018 — 350ms with the target window's activation waiting behind it, because `beginHideUi` runs
+before the focus request by design.
+
+The spike is in `[NSWindow orderOut:]` itself. Marks on both sides isolate it: the
+`allSecondaryWindowsCanBecomeKey` toggles around it never exceeded 1ms, and `Window.focus` opens its own
+step, so the figure contains neither.
+
+Four explanations tested and rejected:
+
+| Hypothesis | Evidence against |
+|---|---|
+| It scales with the window count | 0.82ms per window, r=0.29, over 63-84 windows. Explains the ~25ms baseline, not a 350ms spike |
+| It collides with background work (`syncSpacesState`, re-subscription, AX scans) | medians identical with that work within 0.75s and without: 24ms vs 22ms |
+| It depends on the app receiving focus | same app is both: Terminal median 2ms / max 309ms, Brave median 3ms / max 304ms |
+| It is the first dismissal after an idle period | 17 summons after gaps of 4-84 minutes are indistinguishable from back-to-back ones |
+
+So it is WindowServer latency on a cross-process call, not something the code computes. The only lever
+would be not making the panel key at all, so dismissing it needs no key-window handoff — a rewrite of the
+focus model, not a safe change. **Left alone deliberately.**
+
+Two attribution traps this cost a round trip each, recorded so the next reader skips them:
+
+- `MainThreadStall` bills un-instrumented main-thread work to the previously opened step (see
+  `src/main-thread-ipc.md`). A 356ms `endHideUi` was really the `.spacesSynced` reducer; a 304ms `orderOut`
+  was really the same. **Add a closing mark before believing a number.**
+- The shipped threshold is 16ms, so any distribution computed from a Release log is conditioned on
+  exceeding 16ms. A "median" from one is the median of the tail. Lower the threshold to get real medians.
+
+---
+
 ## Cherry-picked upstream PRs (not merged upstream yet)
 
 PRs on `lwouis/alt-tab-macos` that are applied here ahead of upstream. Unlike the
