@@ -58,10 +58,17 @@ Three launch-latency patches, all superseded by upstream's own window-tracking r
   anchored sweep were not carried over: their batched traversal takes one route and one start id
   for a whole pid. `WindowAcquisitionPolicySpecs.md` + its 5 tests went with the patch.
 
-**Not re-measured yet.** The A/B numbers those patches carried (first window 1444ms → 618ms,
-launch → non-empty `--list` 3.02s → 1.89s) were against pre-11.6 upstream and say nothing about
-this tree. Time launch → a complete `--list` on the Release build; if it is worse than the ~1.2s
-the fork had, re-apply the relevant piece as a fresh `local:` commit with new numbers.
+**First measurement after the merge, and nothing needs re-applying.** From the `ai/run.sh` DEBUG
+build's own log (80 windows, `Window.init` timestamps against `applicationDidFinishLaunching`):
+first window at **+320ms**, 79 of 80 by **+725ms**, the last at **+900ms**. The three patches
+together had bought ~1.2s to a complete list on a RELEASE build, so an unoptimized build now beats
+them — the deferred inventory is no longer what discovery waits for, because upstream's tracking
+rework reaches most windows through `Applications.initialDiscovery` and the WindowServer tap
+before the 1s timer ever fires.
+
+Not the same method as the older numbers (Release, launch → complete `--list`), so treat it as a
+no-regression check rather than a comparable figure. Worth one Release `--list` run if launch ever
+feels slow again.
 
 > `vendor/Sparkle` and `vendor/AppCenter` are still checked in — they are simply not referenced by
 > the target. Deleting them would be a large diff against upstream for no build-time or runtime
