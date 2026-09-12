@@ -97,24 +97,48 @@ class KeyboardEvents {
             CGEvent.tapEnable(tap: eventTap, enable: true)
             Logger.warning { "flags tap was disabled; re-enabled" }
         }
-        // `updateEscapeAbsorptionTap` covers the Esc tap: it compares `tapIsEnabled` against what it
-        // wants, so a tap macOS disabled while the switcher is open is re-enabled by that comparison.
-        updateEscapeAbsorptionTap()
+        // `force`, because this is the path for a tap macOS disabled without us asking, and the cached
+        // state cannot know about that. Writing the wanted state unconditionally is both correct here and
+        // cheaper than asking the event server what the state is.
+        updateEscapeAbsorptionTap(force: true)
     }
+
+    /// What we last told the event server about `escapeEventTap`, so the decision below costs no IPC.
+    /// Starts false: the tap is created disabled.
+    ///
+    /// Only ever written on the main thread, or through `force` (which writes whatever it finds), so the
+    /// read needs no lock: the hot callers are all main-thread and serialized with each other, and the one
+    /// off-main caller is the recovery path, which does not trust this value anyway.
+    private static var escapeTapEnabled = false
 
     /// Enables `escapeEventTap` only while it can do something useful: a switcher session is open AND
     /// a shortcut binds Esc. Outside that window it stays disabled, so the active HID `.keyDown` tap is
     /// never in the path during normal typing (#5766). Idempotent; safe from any thread; a no-op before
     /// the tap exists (e.g. unit tests that set `SwitcherSession.current` directly).
-    static func updateEscapeAbsorptionTap() {
+    ///
+    /// The wanted state is compared against `escapeTapEnabled` rather than against
+    /// `CGEvent.tapIsEnabled`, which is a round trip to the event server and was the EXPENSIVE half of
+    /// this function: measured here over scripted summon/dismiss cycles, the read cost 4-34ms against
+    /// 1-7ms for `tapEnable`, and once 246ms on a busy event server — where it blocked the main thread
+    /// between a dismissal and the next summon. The answer was always ours to know: nothing but AltTab
+    /// enables this tap, and the one thing macOS does unasked — DISABLE it — arrives as
+    /// `.tapDisabledByUserInput` / `.tapDisabledByTimeout`, whose handler forces the write.
+    ///
+    /// `force` is for those recovery paths (also wake and unlock): they must not trust the cache. It only
+    /// ever re-ENABLES, which is the sole failure the cache can hide — macOS never enables a tap on its
+    /// own, so "wanted off and macOS turned it off" needs no repair. That asymmetry also keeps the forced
+    /// write out of a loop: `.tapDisabledByUserInput` arrives once per dismissal, exactly when the wanted
+    /// state is off, and answering it with another `tapEnable(false)` would risk re-triggering it.
+    static func updateEscapeAbsorptionTap(force: Bool = false) {
         guard let escapeEventTap else { return }
         let shouldEnable = anyShortcutUsesEscape && SwitcherSession.isActive
-        if CGEvent.tapIsEnabled(tap: escapeEventTap) != shouldEnable {
-            CGEvent.tapEnable(tap: escapeEventTap, enable: shouldEnable)
-            // Whether Esc can be heard while the switcher is up is the difference between "press Esc" and
-            // "no way out", and it was not visible anywhere. Cheap: this fires twice per summon.
-            Logger.debug { "escape tap enabled:\(shouldEnable) usesEscape:\(anyShortcutUsesEscape) sessionActive:\(SwitcherSession.isActive)" }
-        }
+        let changed = escapeTapEnabled != shouldEnable
+        escapeTapEnabled = shouldEnable
+        guard changed || (force && shouldEnable) else { return }
+        CGEvent.tapEnable(tap: escapeEventTap, enable: shouldEnable)
+        // Whether Esc can be heard while the switcher is up is the difference between "press Esc" and
+        // "no way out", and it was not visible anywhere. Cheap: this fires twice per summon.
+        Logger.debug { "escape tap enabled:\(shouldEnable) usesEscape:\(anyShortcutUsesEscape) sessionActive:\(SwitcherSession.isActive)" }
     }
 
     static func addEventHandlers() {
