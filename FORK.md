@@ -60,14 +60,14 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 
 ## Cherry-picked upstream PRs (not merged upstream yet)
 
-Open PRs on `lwouis/alt-tab-macos` that are applied here ahead of upstream. Unlike the
+PRs on `lwouis/alt-tab-macos` that are applied here ahead of upstream. Unlike the
 local patches above, these are **temporary**: when upstream merges one, the next
 `git merge upstream/master` brings the same change in again — **drop our copy then**
 (`git rebase --onto` / revert), don't try to keep both.
 
 | PR | What | Files | Notes |
 |---|---|---|---|
-| [#5967](https://github.com/lwouis/alt-tab-macos/pull/5967) | A shortcut could not be assigned because an *unrelated* pre-existing conflict between two other shortcuts was counted against it | `CustomRecorderControlTestable.swift` | Applied clean. +1 test |
+| [#5967](https://github.com/lwouis/alt-tab-macos/pull/5967) | A shortcut could not be assigned because an *unrelated* pre-existing conflict between two other shortcuts was counted against it | `CustomRecorderControlTestable.swift` | Applied clean. +1 test. The PR was closed on 2026-08-24: lwouis took the commit onto his own (unpublished) dev branch, amended, to ship in the next release. So it arrives like a merged one would — **drop our copy at the merge that brings it in** |
 | [#5932](https://github.com/lwouis/alt-tab-macos/pull/5932) | New **XS** and **XL** appearance sizes (all 3 styles), with a preferences migration for the shifted stored indexes | `MacroPreferences.swift`, `Appearance.swift`, `PreferencesMigrations.swift`, `AppearanceTab.swift`, `LabelAndControl.swift`, `TileView.swift`, +6 | One conflict in `TileView.swift`: the PR predates upstream's `Appearance.resolvedStyle` cache, so it still called `Preferences.effectiveAppearanceStyle(…)`. Resolved to our `resolvedStyle` + the PR's `resolvedSize.isLargeOrAbove`. Its migration also needed a fork-local fix to run at all (see **Fork-safe XS/XL migration** above). +5 tests, +2 fork tests |
 
 Both are cherry-picks, so they keep their original authors; upstream's own merge of them
