@@ -48,11 +48,26 @@ class TilesView {
     }
 
     static func endSearchSession() {
-        searchField.stringValue = ""
+        MainThreadStall.step()
         Windows.updateSearchQuery("")
         TilesPanel.shared.resetFrozenPosition()
         searchMode = .off
-        updateSearchFieldEditability()
+        takeTheCaretFromTheField()
+    }
+
+    /// The counterpart to `giveTheFieldTheCaret`, and a turn late for the mirror reason: clearing the field
+    /// and dropping its editability resigns it as first responder, and AppKit answers that by DEACTIVATING
+    /// the system text-input context, a synchronous XPC to the input-method services (`CursorUIViewService`,
+    /// `CharacterPalette`). Measured 4-7ms on macOS 26.6.2, but it is unbounded: on one user's machine it
+    /// returned only by timing out after 3.0s, and the whole dismissal sat behind it (#5981). Callers run it
+    /// last, behind whatever the user is actually waiting for: the panel hiding, or the re-layout that puts
+    /// the unfiltered list back.
+    private static func takeTheCaretFromTheField() {
+        DispatchQueue.main.async {
+            guard searchMode == .off else { return } // search restarted meanwhile and owns the field now
+            searchField.stringValue = ""
+            updateSearchFieldEditability()
+        }
     }
 
     static func toggleSearchModeFromShortcut() {
@@ -63,21 +78,22 @@ class TilesView {
     }
 
     static func disableSearchMode() {
+        MainThreadStall.step()
         guard SearchModeResolver.disable(mode: searchMode) == .exitToOff else { return }
         TilesPanel.shared.resetFrozenPosition()
         searchMode = .off
-        updateSearchFieldEditability()
-        searchField.stringValue = ""
         clearHover()
         Windows.updateSearchQuery("")
         App.refreshUi(true)
         focusSelectedTileIfPossible()
+        takeTheCaretFromTheField()
     }
 
     static func enableSearchEditing() {
+        MainThreadStall.step()
         switch SearchModeResolver.enableEditing(mode: searchMode, canSearch: ProFeature.searchInSwitcher.attemptUse()) {
             case .placeCaretOnly:
-                placeSearchCaretAtEnd()
+                giveTheFieldTheCaret()
             case .enterEditing:
                 searchMode = .editing
                 updateSearchFieldEditability()
@@ -85,11 +101,40 @@ class TilesView {
                 clearHover()
                 stopKeyRepeatTimers()
                 App.refreshUi(true)
-                TilesPanel.shared.makeFirstResponder(searchField)
-                placeSearchCaretAtEnd()
+                giveTheFieldTheCaret()
             default:
                 return
         }
+    }
+
+    /// The show-path twin of `endSearchSession`: making the field first responder ACTIVATES the system
+    /// text-input context, the same synchronous XPC whose deactivation timed out for 3.0s in #5981. It runs
+    /// a runloop turn late so the CoreAnimation transaction that reveals the panel commits first —
+    /// `TilesPanel.show()` has only SET alpha at this point, so a stall here would keep the old frame on
+    /// screen. Measured under 1ms on macOS 26.6.2; the deferral is for the tail, not the median.
+    private static func giveTheFieldTheCaret() {
+        DispatchQueue.main.async {
+            guard searchMode == .editing, SwitcherSession.isActive else { return }
+            giveTheFieldTheCaretNow()
+        }
+    }
+
+    /// Until the deferred pass above runs, the field is not first responder and a typed key would go to the
+    /// panel instead. It normally wins that race by a wide margin (measured 5-9ms, and 77ms on the first
+    /// summon of a launch where the main thread is still busy discovering windows), but the user is waiting
+    /// for this keystroke, so close the window rather than bet on it. A no-op once the field already has it:
+    /// past that point the selection belongs to the user, and moving it is what broke ⌘A (#6019). See
+    /// `SearchFieldEditing`.
+    static func giveTheFieldTheCaretNow() {
+        let intent = SearchFieldEditing.caretIntent(mode: searchMode, fieldOwnsCaret: fieldOwnsTheCaret())
+        guard intent == .takeCaretAndCollapseToEnd else { return }
+        TilesPanel.shared.makeFirstResponder(searchField)
+        placeSearchCaretAtEnd()
+    }
+
+    private static func fieldOwnsTheCaret() -> Bool {
+        guard let editor = searchField.currentEditor() else { return false }
+        return TilesPanel.shared.firstResponder === editor
     }
 
     static func handleSearchEditingKeyDown(_ event: NSEvent) -> SearchKeyResult {
@@ -199,14 +244,12 @@ class TilesView {
         TilesPanel.shared.makeFirstResponder(tile)
     }
 
+    /// AppKit selects the whole content when a text field becomes first responder, so the keystroke that
+    /// made us take the caret would REPLACE what is already in the field. Collapse to the end instead.
+    /// Only ever runs on the turn we take the caret; see `giveTheFieldTheCaretNow`.
     private static func placeSearchCaretAtEnd() {
-        guard searchMode == .editing else { return }
-        if TilesPanel.shared.firstResponder !== searchField.currentEditor() {
-            TilesPanel.shared.makeFirstResponder(searchField)
-        }
         guard let editor = searchField.currentEditor() else { return }
-        let end = searchField.stringValue.utf16.count
-        editor.selectedRange = NSRange(location: end, length: 0)
+        editor.selectedRange = SearchFieldEditing.endOfText(length: searchField.stringValue.utf16.count)
     }
 
     static func hasMarkedText() -> Bool {
@@ -257,9 +300,23 @@ class TilesView {
         }
     }
 
+    /// A title label is always drawn on one line, so its height is a property of the FONT and of nothing
+    /// else. Measuring it off a tile's own label made it a property of that window's title instead:
+    /// `NSCell.cellSize.height` grows by one line height per line break in the string, so a single window
+    /// titled with a multi-line string made every tile in the grid that much taller and pushed the
+    /// thumbnails down inside them (#6010). `WindowTitle` keeps such a string out of the model; this keeps
+    /// the metric out of reach of whatever does get in.
+    private static let labelHeightProbe = TileTitleView(font: Appearance.font)
+
+    static func labelLineHeight() -> CGFloat {
+        labelHeightProbe.font = Appearance.font
+        labelHeightProbe.stringValue = "Ag"
+        return labelHeightProbe.cell!.cellSize.height
+    }
+
     static func updateCachedSizes() {
         guard let firstView = TilesView.recycledViews.first else { return }
-        layoutCache.labelHeight = firstView.label.cell!.cellSize.height
+        layoutCache.labelHeight = labelLineHeight()
         let iconCellSize = firstView.statusIcons.iconCellSize
         layoutCache.iconWidth = iconCellSize.width
         layoutCache.iconHeight = iconCellSize.height
@@ -449,95 +506,69 @@ class TilesView {
     private static func resolveAutoSize(_ widthMax: CGFloat) {
         let searchReservedHeight: CGFloat = searchMode == .off ? 0 : searchBarHeight() + 10
         let heightMax = max(0, TilesPanel.maxThumbnailsHeight() - searchReservedHeight)
-        for size in [AppearanceSizePreference.large, .medium, .small] {
+        _ = TileGridLayout.firstSizeThatFits([AppearanceSizePreference.large, .medium, .small], heightMax: heightMax) { size in
             Appearance.applySize(size)
             Self.updateCachedSizes()
-            let maxY = dryRunLayoutTileViews(widthMax)
-            if size == .small || maxY <= heightMax { return }
+            return dryRunLayoutTileViews(widthMax)
         }
     }
 
     private static func dryRunLayoutTileViews(_ widthMax: CGFloat) -> CGFloat {
-        let labelHeight = Self.layoutCache.labelHeight
-        let height = TileView.height(labelHeight)
-        let isLeftToRight = App.shared.userInterfaceLayoutDirection == .leftToRight
-        let startingX = isLeftToRight ? Appearance.interCellPadding : widthMax - Appearance.interCellPadding
-        var currentX = startingX
-        var currentY = Appearance.interCellPadding
-        var maxY = currentY + height + Appearance.interCellPadding
-        var index = 0
-        while index < TilesView.recycledViews.count {
-            guard SwitcherSession.isActive else { return maxY }
-            defer { index += 1 }
+        let height = TileView.height(Self.layoutCache.labelHeight)
+        let tiles = fillTiles(height).tiles
+        return TileGridLayout.compute(gridInput(tiles, height, widthMax)).maxY
+    }
+
+    /// Puts this render's window on every recycled tile that has one, and releases the images the rest are
+    /// still holding. Returns the tiles that will be placed, in model order, and whether the session ended
+    /// half way — a caller that is about to commit a layout has nothing to commit in that case.
+    private static func fillTiles(_ height: CGFloat) -> (tiles: [(index: Int, view: TileView)], aborted: Bool) {
+        var tiles = [(index: Int, view: TileView)]()
+        for index in 0..<TilesView.recycledViews.count {
+            guard SwitcherSession.isActive else { return (tiles, true) }
             let view = TilesView.recycledViews[index]
-            guard index < Windows.list.count else { break }
-            let window = Windows.list[index]
-            guard Windows.shouldDisplay(window) else { view.frame = .zero; continue }
-            view.updateRecycledCellWithNewContent(window, index, height)
-            let width = view.frame.size.width
-            let projectedX = projectedWidth(currentX, width).rounded(.down)
-            if needNewLine(projectedX, widthMax) {
-                currentX = startingX
-                currentY = (currentY + height + Appearance.interCellPadding).rounded(.down)
-                currentX = projectedWidth(currentX, width).rounded(.down)
-                maxY = max(currentY + height + Appearance.interCellPadding, maxY)
-            } else {
-                currentX = projectedX
+            guard index < Windows.list.count else {
+                // release images and stale window references from unused recycledViews; they take lots of RAM
+                view.thumbnail.releaseImage()
+                view.appIcon.releaseImage()
+                view.window_ = nil
+                continue
             }
+            let window = Windows.list[index]
+            guard Windows.shouldDisplay(window) else {
+                view.frame = .zero
+                continue
+            }
+            view.updateRecycledCellWithNewContent(window, index, height)
+            tiles.append((index, view))
         }
-        return maxY
+        return (tiles, false)
+    }
+
+    private static func gridInput(_ tiles: [(index: Int, view: TileView)], _ height: CGFloat, _ widthMax: CGFloat) -> TileGridLayout.Input {
+        TileGridLayout.Input(widths: tiles.map { $0.view.frame.size.width }, tileHeight: height, widthMax: widthMax,
+            padding: Appearance.interCellPadding,
+            isLeftToRight: App.shared.userInterfaceLayoutDirection == .leftToRight)
     }
 
     private static func layoutTileViews(_ widthMax: CGFloat) -> (CGFloat, CGFloat, CGFloat, [Int])? {
         let labelHeight = Self.layoutCache.labelHeight
         let height = TileView.height(labelHeight)
-        let isLeftToRight = App.shared.userInterfaceLayoutDirection == .leftToRight
-        let startingX = isLeftToRight ? Appearance.interCellPadding : widthMax - Appearance.interCellPadding
-        var currentX = startingX
-        var currentY = Appearance.interCellPadding
-        var maxX = CGFloat(0)
-        var maxY = currentY + height + Appearance.interCellPadding
-        var newViews = [TileView]()
-        var rowSignature = [Int]()
-        rows.removeAll(keepingCapacity: true)
-        rows.append([TileView]())
-        var index = 0
-        while index < TilesView.recycledViews.count {
-            guard SwitcherSession.isActive else { return nil }
-            defer { index = index + 1 }
-            let view = TilesView.recycledViews[index]
-            if index < Windows.list.count {
-                let window = Windows.list[index]
-                guard Windows.shouldDisplay(window) else {
-                    view.frame = .zero
-                    continue
-                }
-                view.updateRecycledCellWithNewContent(window, index, height)
-                let width = view.frame.size.width
-                let projectedX = projectedWidth(currentX, width).rounded(.down)
-                if needNewLine(projectedX, widthMax) {
-                    currentX = startingX
-                    currentY = (currentY + height + Appearance.interCellPadding).rounded(.down)
-                    view.frame.origin = CGPoint(x: localizedCurrentX(currentX, width), y: currentY)
-                    currentX = projectedWidth(currentX, width).rounded(.down)
-                    maxY = max(currentY + height + Appearance.interCellPadding, maxY)
-                    rows.append([TileView]())
-                } else {
-                    view.frame.origin = CGPoint(x: localizedCurrentX(currentX, width), y: currentY)
-                    currentX = projectedX
-                    maxX = max(isLeftToRight ? currentX : widthMax - currentX, maxX)
-                }
-                rows[rows.count - 1].append(view)
-                newViews.append(view)
-                rowSignature.append(index)
-                window.rowIndex = rows.count - 1
-            } else {
-                // release images and stale window references from unused recycledViews; they take lots of RAM
-                view.thumbnail.releaseImage()
-                view.appIcon.releaseImage()
-                view.window_ = nil
-            }
+        let filled = fillTiles(height)
+        guard !filled.aborted else { return nil }
+        let tiles = filled.tiles
+        let layout = TileGridLayout.compute(gridInput(tiles, height, widthMax))
+        for (position, tile) in tiles.enumerated() {
+            tile.view.frame.origin = layout.origins[position]
         }
+        rows = layout.rows.map { $0.map { tiles[$0].view } }
+        for (rowIndex, row) in layout.rows.enumerated() {
+            for position in row { Windows.list[tiles[position].index].rowIndex = rowIndex }
+        }
+        let newViews = tiles.map { $0.view }
+        let rowSignature = tiles.map { $0.index }
+        let maxX = layout.maxX
+        let maxY = layout.maxY
         scrollView.documentView!.subviews = newViews
         scrollView.documentView!.addSubview(thumbnailOverView)
         thumbnailOverView.scrollView = scrollView
@@ -546,24 +577,6 @@ class TilesView {
             docLayer.insertSublayer(thumbnailUnderLayer, at: 0)
         }
         return (maxX, maxY, labelHeight, rowSignature)
-    }
-
-    private static func needNewLine(_ projectedX: CGFloat, _ widthMax: CGFloat) -> Bool {
-        if App.shared.userInterfaceLayoutDirection == .leftToRight {
-            return projectedX > widthMax
-        }
-        return projectedX < 0
-    }
-
-    private static func projectedWidth(_ currentX: CGFloat, _ width: CGFloat) -> CGFloat {
-        if App.shared.userInterfaceLayoutDirection == .leftToRight {
-            return currentX + width + Appearance.interCellPadding
-        }
-        return currentX - width - Appearance.interCellPadding
-    }
-
-    private static func localizedCurrentX(_ currentX: CGFloat, _ width: CGFloat) -> CGFloat {
-        App.shared.userInterfaceLayoutDirection == .leftToRight ? currentX : currentX - width
     }
 
     private static func layoutParentViews(_ maxX: CGFloat, _ widthMax: CGFloat, _ maxY: CGFloat, _ labelHeight: CGFloat) {
@@ -640,15 +653,13 @@ class TilesView {
     }
 
     static func centerRows(_ maxX: CGFloat) {
-        for row in rows where !row.isEmpty {
+        let offsets = TileGridLayout.centeringOffsets(rowWidths: rows.map { $0.map { $0.frame.size.width } },
+            padding: Appearance.interCellPadding, within: maxX)
+        let sign: CGFloat = App.shared.userInterfaceLayoutDirection == .leftToRight ? 1 : -1
+        for (rowIndex, row) in rows.enumerated() {
             guard SwitcherSession.isActive else { return }
-            let rowWidth = Appearance.interCellPadding + row.reduce(CGFloat(0)) { $0 + $1.frame.size.width + Appearance.interCellPadding }
-            let offset = ((maxX - rowWidth) / 2).rounded()
-            if offset > 0 {
-                for view in row {
-                    view.frame.origin.x += App.shared.userInterfaceLayoutDirection == .leftToRight ? offset : -offset
-                }
-            }
+            guard offsets[rowIndex] > 0 else { continue }
+            for view in row { view.frame.origin.x += sign * offsets[rowIndex] }
         }
     }
 

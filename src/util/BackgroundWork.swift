@@ -7,6 +7,7 @@ class BackgroundWork {
     static var keyboardAndMouseAndTrackpadEventsThread: BackgroundThreadWithRunLoop!
     static var missionControlThread: BackgroundThreadWithRunLoop!
     static var cliEventsThread: BackgroundThreadWithRunLoop!
+    static var axSemanticsThread: BackgroundThreadWithRunLoop!
 
     // we use an OperationQueue for most tasks, especially when we need to call blocking APIs in parallel
     static var repeatingKeyQueue: LabeledOperationQueue!
@@ -38,12 +39,15 @@ class BackgroundWork {
         missionControlThread = BackgroundThreadWithRunLoop("missionControl", .userInteractive)
         // we listen to CLI commands (CFMessagePort events)
         cliEventsThread = BackgroundThreadWithRunLoop("cliMessages", .userInteractive)
+        // ONE runloop for every app's AXObserver, however many apps are running. Per-app runloops would put
+        // the thread budget in each user's app count; per-window sources are what leaked in #5612.
+        axSemanticsThread = BackgroundThreadWithRunLoop("axSemantics", .userInteractive)
     }
 
     static func addPotentialThreadCount(_ additionalCount: Int) {
         totalPotentialThreadCount += additionalCount
         // a macos process has a soft limit of 64 threads. We need to be careful to don't spawn too many threads through DispatchQueues.
-        // budget: BackgroundWork (~20) + AXCallScheduler (20: 8+6+6) + CGSCallScheduler (4) + ProcessCallScheduler (2) = 46
+        // budget: BackgroundWork (~21) + AXCallScheduler (20: 8+6+6) + CGSCallScheduler (4) + ProcessCallScheduler (2) = 47
         assert(totalPotentialThreadCount <= 50)
     }
 
@@ -108,6 +112,17 @@ class BackgroundWork {
         func async(_ block: @escaping () -> Void) {
             guard let runLoop else { return }
             CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue, block)
+            CFRunLoopWakeUp(runLoop)
+        }
+
+        /// Same, after a delay. The timer is scheduled ON this thread's runloop, so the block still lands
+        /// where the state it touches lives.
+        func asyncAfter(_ seconds: Double, _ block: @escaping () -> Void) {
+            guard let runLoop else { return }
+            let timer = CFRunLoopTimerCreateWithHandler(nil, CFAbsoluteTimeGetCurrent() + seconds, 0, 0, 0) { _ in
+                block()
+            }
+            CFRunLoopAddTimer(runLoop, timer, .commonModes)
             CFRunLoopWakeUp(runLoop)
         }
 

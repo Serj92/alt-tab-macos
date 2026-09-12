@@ -2,13 +2,13 @@ import Cocoa
 
 class Throttler {
     private let delayInNanoseconds: UInt64
-    /// `nil` until the first run: a just-constructed throttler has NOT fired. Seeding it with `now`
-    /// instead made the first call ever land in the window and get pushed a full delay — measured at
-    /// launch as ~1.0s added to `Applications.manuallyRefreshAllWindows`, on top of the 1s that
-    /// `App.applicationDidFinishLaunching` already defers it by, so the switcher had no windows for ~3s.
-    /// `ThrottleDecision` documents the leading edge (`testThrottleFirstCallRunsNow`) and
-    /// `ThrottlerWithKey` gets it for free (no map entry yet); this is the same state, spelled out.
-    private var lastTimeInNanoseconds: UInt64? = nil
+    /// nil until the first run, so the FIRST call is a leading edge rather than one throttled against the
+    /// instant this object happened to be built. Swift builds a static lazily, i.e. inside the first call
+    /// itself, so `now` there meant the first call always paid the whole delay: the launch window inventory
+    /// could not run in AltTab's first second however early it was asked for, and a summon at +0.4s drew an
+    /// empty switcher and filled it 1.3s later. `ThrottlerWithKey` has always started from no entry, and
+    /// `ThrottleDecision` documents nil as a fresh leading edge; this makes the two agree.
+    private var lastTimeInNanoseconds: UInt64?
     private var nextScheduled = false
 
     init(delayInMs: Int) {

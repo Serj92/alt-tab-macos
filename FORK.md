@@ -33,15 +33,35 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | **Pro unlock** | `LicenseManager.forceProUnlock = true` short-circuits `isProAvailable` / `isProLocked` / `computeState()`. Upstream's real bodies are kept behind the flag rather than deleted, so `LicenseManagerTests` can turn it off in `setUp` and still test them — which is why a full run is green (see [Running tests](#running-tests)) | `src/pro/license/LicenseManager.swift`, `src/pro/license/LicenseManagerTests.swift` |
 | **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped; the macOS-26-only `SCScreenshotManager.captureScreenshot` path falls back to `captureSampleBuffer` (runtime-equivalent on macOS 15) | `SettingsWindow`, `TilesView`, `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow`, `WindowCaptureEvents` |
 | **Perf micro-opts** | SCWindow indexing by id (avoid O(n²)); `Appearance.resolvedStyle` cache for the tile render hot path. ~~forward focus bookkeeping (rapid Cmd+Tab)~~ — dropped at v11.4.4: upstream's `ActivationFocusResolver` intent mechanism (#5596) covers the race, and the manual `frontmostPid` forward-set would break its `frontmostPid != pid` intent-recording guard | `WindowCaptureEvents.swift`, `Appearance.swift`, `TilesView.swift` |
-| **Throttler leading edge** | `Throttler` seeded `lastTimeInNanoseconds` with `now` in its constructor, so the FIRST call ever was read as a repeat and pushed a full window. At launch that added ~1.0s to `Applications.manuallyRefreshAllWindows` (already deferred 1s by `applicationDidFinishLaunching`), so the switcher listed no windows for ~3s after start — Cmd+Tab in that window opened it empty. Now `nil` until the first run, which is the leading edge `SchedulingPolicySpecs.md` documents (`testThrottleFirstCallRunsNow`) and `ThrottlerWithKey` already gets from having no map entry. Measured launch → non-empty `--list`: **3.02s → 1.89s** (3 runs each). No unit seam: compiling `Throttler` into the test bundle drags `BackgroundWork` + the AX/CGS/Process schedulers with it | `src/util/Throttler.swift` |
-| **Launch inventory sooner** | The one initial window inventory was deferred 1s after launch; the rest of launch is done ~145ms in, so most of that was idle waiting. Now 0.25s, which still clears the launch tail with margin. Measured to a complete window list, 5 launches each: 1s → 1918ms, 0.25s → 1208ms (0.1s → 911ms, rejected: no margin over the 145ms tail, and a login-item start competes with the whole system) | `src/App.swift` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
 | **Debug-strip** | gate `DebugWindow` (the "Debug tools" window) + its menubar item + `BenchmarkRunner` behind `#if DEBUG` so a **Release** build carries no debug machinery (QAMenu + DebugMenu live-graph were already `#if DEBUG`) | `App.swift`, `Menubar.swift`, `DebugWindow.swift`, `Benchmark.swift` |
 | **No auto-update** | Sparkle is removed entirely: the local SwiftPM package, the framework and its `Updater.app`/`Autoupdate` helpers, `SparkleDelegate`, the `UserDefaultsEvents` class (it existed only to mirror Sparkle's own checkbox back into `updatePolicy`), the menubar's "Check for updates…", the Settings updates-policy row, and the feedback window's pre-form update check. The `updatePolicy` preference itself is left defined but unused, to keep `MacroPreferences` / migrations untouched. Bundle 12MB → 9.5MB. The fork could never update itself anyway (nil feed), so nothing is lost — the feedback window shows its form directly instead of after a check that could only ever fail | `App.swift`, `Menubar.swift`, `GeneralTab.swift`, `PreferencesEvents.swift`, `FeedbackWindow.swift`, `Info.plist`, `project.pbxproj` |
 | **No crash reporting** | AppCenter is removed entirely: the local SwiftPM package, the `AppCenter` / `AppCenterCrashes` products, `AppCenterCrash`, the `AppCenterApplication` NSApplication subclass (`NSPrincipalClass` is plain `NSApplication` now), `Secrets` (it held nothing else), the crash-reports queue, and the Settings "Crash reports policy" row. `APPCENTER_SECRET` was defined in no xcconfig, so the shipped `AppCenterSecret` was the empty string and reports could never reach anyone; the service itself is retired (upstream tracks a replacement in #4073). Dropping it also drops the dylibs it dragged in: CrashReporter.framework, CoreTelephony, SystemConfiguration, libsqlite3 and libz, and with the embedded framework gone the `@rpath/libswift*` back-deployment copies collapse onto the OS ones in `/usr/lib/swift` (66 load commands → 43). CoreData survives — it turns out to be an autolink artifact with no undefined symbols against it, so it was never AppCenter's to remove. The `crashPolicy` preference is left defined but unused, to keep `MacroPreferences` / migrations untouched. **Behaviour change:** `AppCenterCrash` registered `NSApplicationCrashOnExceptions`, so an exception raised inside `sendEvent:` killed the app *so it could be reported*; with no reporter that trade buys nothing, and stock AppKit handling (log and carry on) applies again | `App.swift`, `Info.plist`, `alt-tab-macos-Bridging-Header.h`, `GeneralTab.swift`, `BackgroundWork.swift`, `project.pbxproj` |
 | **No "move to /Applications" prompt** | `MoveToApplicationsFolder.promptIfNeeded()` is no longer called. `ai/install.sh` always installs to /Applications, so the prompt can only fire on a build launched from somewhere else — a probe build for an A/B measurement — where accepting it relocates the very binary being measured. It also ran a modal alert at the earliest point of launch, which forced upstream to order it ahead of the WindowServer tap so a queued discovery could not drain re-entrantly into a half-built model; not calling it drops that constraint. The type is left in the tree, uncalled | `src/App.swift` |
-| **Cold-start window discovery** | The discovery sweep passed `.otherSpaceViaBruteForce` for *every* newly-seen wid, so the `WindowAcquisitionPolicy.Route` enum existed while nothing chose between its cases. A brute force that finds nothing costs the full 250ms `bruteForceBudgetMs` before the wid can be rejected, and the AX scan pool is 6 wide — measured at launch: 17 unresolvable wids, three waves of rejections 250ms apart, and no window published until the last one finished. Those wids are not other-Space windows; they are per-window helper surfaces a browser parks at application level (`511`/`512` beside the accepted `510`) that have no AX element and never will. Now the route is chosen from the WindowServer's own Space membership, and the brute force that remains is anchored near the app's known element ids instead of starting at 0 — the lesson `InactiveTabScanPolicy.scanStart` already recorded. **Measured A/B, same 71 windows: first window 1444ms → 618ms, full list 1818ms → 982ms.** Design in `src/windowserver/WindowAcquisitionPolicySpecs.md`; +5 tests | `WindowAcquisitionPolicy.swift`, `Applications.swift`, `WindowElementAcquisition.swift`, `WindowDiscriminator.swift`, `AXUIElement.swift` |
 | **Fork-safe XS/XL migration** | Upstream PR #5932 version-gates `migrateAppearanceSizeIndexes` at 11.4.4, but the fork's `App.version` is derived from the last `chore(release):` commit, so it never rises above the stored `preferencesVersion` and the gate can never fire (raising the threshold instead would re-run the shift on *every* launch). Called unconditionally, guarded by a one-shot `fork.migratedAppearanceSizeIndexes` flag so upstream's own gate can't shift the indexes a second time once the PR lands. **Drop together with the #5932 cherry-pick** | `src/preferences/PreferencesMigrations.swift` |
+
+### Dropped at the v11.6.1 merge
+
+Three launch-latency patches, all superseded by upstream's own window-tracking rework:
+
+- **Throttler leading edge** — upstream made the same one-line change (`lastTimeInNanoseconds`
+  is `UInt64?`, nil until the first run) with the same reasoning. Nothing fork-local left.
+- **Launch inventory sooner** (1s → 0.25s) — upstream keeps the 1s defer, and instead has the
+  very first summon fire the inventory itself and wait up to `launchInventoryGraceInMs` (400ms)
+  for it. That removes the empty-switcher frame our 0.25s was aimed at, while keeping the reason
+  the defer exists: on a login-item start the sweep's AX calls compete with every other login
+  item, which our own measurements had shown stretching the sweep from ~850ms to ~1600ms.
+- **Cold-start window discovery** — upstream reached the same cost from the other side:
+  `Applications.scheduleSurfaceAcquisitions` groups an inventory pass by pid, so one app pays one
+  250ms traversal for all its missing wids instead of one per wid, and `SurfaceAcquisitionPolicy`
+  stops asking after three failures at the same app window set. The route-by-Space choice and the
+  anchored sweep were not carried over: their batched traversal takes one route and one start id
+  for a whole pid. `WindowAcquisitionPolicySpecs.md` + its 5 tests went with the patch.
+
+**Not re-measured yet.** The A/B numbers those patches carried (first window 1444ms → 618ms,
+launch → non-empty `--list` 3.02s → 1.89s) were against pre-11.6 upstream and say nothing about
+this tree. Time launch → a complete `--list` on the Release build; if it is worse than the ~1.2s
+the fork had, re-apply the relevant piece as a fresh `local:` commit with new numbers.
 
 > `vendor/Sparkle` and `vendor/AppCenter` are still checked in — they are simply not referenced by
 > the target. Deleting them would be a large diff against upstream for no build-time or runtime
@@ -67,11 +87,12 @@ local patches above, these are **temporary**: when upstream merges one, the next
 
 | PR | What | Files | Notes |
 |---|---|---|---|
-| [#5967](https://github.com/lwouis/alt-tab-macos/pull/5967) | A shortcut could not be assigned because an *unrelated* pre-existing conflict between two other shortcuts was counted against it | `CustomRecorderControlTestable.swift` | Applied clean. +1 test. The PR was closed on 2026-08-24: lwouis took the commit onto his own (unpublished) dev branch, amended, to ship in the next release. So it arrives like a merged one would — **drop our copy at the merge that brings it in** |
 | [#5932](https://github.com/lwouis/alt-tab-macos/pull/5932) | New **XS** and **XL** appearance sizes (all 3 styles), with a preferences migration for the shifted stored indexes | `MacroPreferences.swift`, `Appearance.swift`, `PreferencesMigrations.swift`, `AppearanceTab.swift`, `LabelAndControl.swift`, `TileView.swift`, +6 | One conflict in `TileView.swift`: the PR predates upstream's `Appearance.resolvedStyle` cache, so it still called `Preferences.effectiveAppearanceStyle(…)`. Resolved to our `resolvedStyle` + the PR's `resolvedSize.isLargeOrAbove`. Its migration also needed a fork-local fix to run at all (see **Fork-safe XS/XL migration** above). +5 tests, +2 fork tests |
 
-Both are cherry-picks, so they keep their original authors; upstream's own merge of them
-will not be recognised as a duplicate by git.
+#5967 arrived with the v11.6.1 merge as `a694953c` (amended, plus a test for the other
+containment direction in `chordsCollide`); our copy was dropped there. #5932 is a cherry-pick, so
+it keeps its original author; upstream's own merge of it will not be recognised as a duplicate by
+git.
 
 ---
 
@@ -151,7 +172,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **945 tests, 0 failures**
+### Expected: **1274 tests, 0 failures**
 
 Any failure is a real regression. Nothing here is "expected to be red".
 
@@ -188,4 +209,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.5.0** (2026-08-19).*
+*Last synced to upstream: **v11.6.1** (2026-09-12).*

@@ -91,8 +91,8 @@ class CustomRecorderControlTestable {
         combinations { isRecomputedInNewCombinations(candidateId, $0) }
     }
 
-    /// Every chord the saved configuration already produces, with no candidate edit applied.
-    /// Used to tell a collision the edit introduces from one that was already there.
+    /// Every chord the saved configuration produces today, with no candidate edit applied. Used to
+    /// tell a collision the edit introduces from one that was already there.
     static func currentCombinations() -> [(String, Shortcut)] {
         combinations { _ in false }
     }
@@ -131,27 +131,27 @@ class CustomRecorderControlTestable {
         return nil
     }
 
-    static func isAlreadyUsedByAnotherShortcut(_ newCombos: [(String, Shortcut)] , _ oldCombos: [(String, Shortcut)], _ currentCombos: [(String, Shortcut)] = []) -> String? {
+    static func isAlreadyUsedByAnotherShortcut(_ newCombos: [(String, Shortcut)], _ oldCombos: [(String, Shortcut)], _ currentCombos: [(String, Shortcut)]) -> String? {
         for newCombo in newCombos {
-            // A chord this same id already produces isn't introduced by the edit. Reporting it anyway
-            // blocks an unrelated change with a collision the saved config already had, naming a
-            // shortcut the user isn't editing and can't fix from that dialog (issue #5455).
-            if currentCombos.contains(where: { $0.0 == newCombo.0 && sameChord($0.1, newCombo.1) }) { continue }
-            for oldCombo in oldCombos {
-                guard !(newCombo.0 == oldCombo.0) else { continue }
-                if (newCombo.1.keyCode == oldCombo.1.keyCode && newCombo.1.modifierFlags == oldCombo.1.modifierFlags)
-                    // special case when 2 nextWindowShortcuts are modifiers-only (e.g. S1: alt + shift, S2: alt+command + shift)
-                    // they will conflict if they their holdShortcuts are included in the other's holdShortcuts
-                    || (newCombo.1.keyCode == .none && oldCombo.1.keyCode == .none && (newCombo.1.modifierFlags.isSuperset(of: oldCombo.1.modifierFlags) || oldCombo.1.modifierFlags.isSuperset(of: newCombo.1.modifierFlags))) {
-                    return oldCombo.0
-                }
+            for oldCombo in oldCombos where newCombo.0 != oldCombo.0 {
+                guard chordsCollide(newCombo.1, oldCombo.1) else { continue }
+                // The 2 already collided before the edit, so the edit doesn't introduce that collision.
+                // Reporting it blocks an unrelated change, naming a shortcut the user isn't editing and
+                // can only "fix" by sacrificing it (#5455). A saved configuration is never re-validated,
+                // so one written before a validation hole was plugged still carries such a pair.
+                guard !currentCombos.contains(where: { $0.0 == newCombo.0 && chordsCollide($0.1, oldCombo.1) }) else { continue }
+                return oldCombo.0
             }
         }
         return nil
     }
 
-    private static func sameChord(_ a: Shortcut, _ b: Shortcut) -> Bool {
-        a.carbonKeyCode == b.carbonKeyCode && a.carbonModifierFlags == b.carbonModifierFlags
+    /// 2 chords can't coexist when they are the same key+modifiers, or when both are modifiers-only
+    /// and one's modifiers contain the other's (e.g. S1: ⌥+⇧, S2: ⌘⌥+⇧, where pressing ⇧ while
+    /// holding ⌘⌥ satisfies both).
+    static func chordsCollide(_ a: Shortcut, _ b: Shortcut) -> Bool {
+        (a.keyCode == b.keyCode && a.modifierFlags == b.modifierFlags)
+            || (a.keyCode == .none && b.keyCode == .none && (a.modifierFlags.isSuperset(of: b.modifierFlags) || b.modifierFlags.isSuperset(of: a.modifierFlags)))
     }
 
     /// commandTab and commandKeyAboveTab are self-contained in the "nextWindowShortcut" shortcuts
