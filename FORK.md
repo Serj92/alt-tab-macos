@@ -31,7 +31,7 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | Area | What | Where |
 |---|---|---|
 | **Pro unlock** | `LicenseManager.forceProUnlock = true` short-circuits `isProAvailable` / `isProLocked` / `computeState()`. Upstream's real bodies are kept behind the flag rather than deleted, so `LicenseManagerTests` can turn it off in `setUp` and still test them — which is why a full run is green (see [Running tests](#running-tests)) | `src/pro/license/LicenseManager.swift`, `src/pro/license/LicenseManagerTests.swift` |
-| **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped; the macOS-26-only `SCScreenshotManager.captureScreenshot` path falls back to `captureSampleBuffer` (runtime-equivalent on macOS 15) | `SettingsWindow`, `TilesView`, `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow`, `WindowCaptureEvents` |
+| **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped; the macOS-26-only `SCScreenshotManager.captureScreenshot` path falls back to `captureSampleBuffer` (runtime-equivalent on macOS 15) | `HelperExtensions` (`NSSearchField.applySearchStyle`, shared by the switcher and Settings search fields), `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow`, `WindowCaptureEvents` |
 | **Perf micro-opts** | SCWindow indexing by id (avoid O(n²)); `Appearance.resolvedStyle` cache for the tile render hot path. ~~forward focus bookkeeping (rapid Cmd+Tab)~~ — dropped at v11.4.4: upstream's `ActivationFocusResolver` intent mechanism (#5596) covers the race, and the manual `frontmostPid` forward-set would break its `frontmostPid != pid` intent-recording guard | `WindowCaptureEvents.swift`, `Appearance.swift`, `TilesView.swift` |
 | **No event-server read for the Esc tap** | `updateEscapeAbsorptionTap` asked `CGEvent.tapIsEnabled` every time just to compare against the state it wanted. Measured with marks around the two calls separately: the read costs **4–34ms**, the `tapEnable` write **1–7ms**, and once the read blocked the main thread for **246ms** between a dismissal and the next summon. Upstream's audit (`src/main-thread-ipc.md`) had the pair at "0–8ms", which hid it. Nothing but AltTab enables this tap, so the wanted state is now compared against a cached flag; macOS only ever *disables* a tap, and that arrives as `.tapDisabledByUserInput` / `.tapDisabledByTimeout`, so the recovery paths (also wake and unlock) pass `force: true`. `force` only ever re-ENABLES — answering the once-per-dismissal `byUserInput` with another `tapEnable(false)` could re-trigger it. Pattern copied from `TrackpadEvents.setAbsorbTapEnabled`, which already caches the same way | `src/events/KeyboardEvents.swift`, `src/main-thread-ipc.md` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
@@ -132,7 +132,7 @@ local patches above, these are **temporary**: when upstream merges one, the next
 
 | PR | What | Files | Notes |
 |---|---|---|---|
-| [#5932](https://github.com/lwouis/alt-tab-macos/pull/5932) | New **XS** and **XL** appearance sizes (all 3 styles), with a preferences migration for the shifted stored indexes | `MacroPreferences.swift`, `Appearance.swift`, `PreferencesMigrations.swift`, `AppearanceTab.swift`, `LabelAndControl.swift`, `TileView.swift`, +6 | One conflict in `TileView.swift`: the PR predates upstream's `Appearance.resolvedStyle` cache, so it still called `Preferences.effectiveAppearanceStyle(…)`. Resolved to our `resolvedStyle` + the PR's `resolvedSize.isLargeOrAbove`. Its migration also needed a fork-local fix to run at all (see **Fork-safe XS/XL migration** above). +5 tests, +2 fork tests |
+| [#5932](https://github.com/lwouis/alt-tab-macos/pull/5932) | New **XS** and **XL** appearance sizes (all 3 styles), with a preferences migration for the shifted stored indexes | `MacroPreferences.swift`, `Appearance.swift`, `PreferencesMigrations.swift`, `AppearanceTab.swift`, `LabelAndControl.swift`, `TileView.swift`, +6 | One conflict in `TileView.swift`: the PR predates upstream's `Appearance.resolvedStyle` cache, so it still called `Preferences.effectiveAppearanceStyle(…)`. Resolved to our `resolvedStyle` + the PR's `resolvedSize.isLargeOrAbove`. Its migration also needed a fork-local fix to run at all (see **Fork-safe XS/XL migration** above). At v11.7.0 upstream deleted `LabelAndControl.applySystemSelectedSegmentStyle` (it only set the default `.automatic`), so the PR's `naturalSegmentWidth` probe no longer calls it. +5 tests, +2 fork tests |
 
 #5967 arrived with the v11.6.1 merge as `a694953c` (amended, plus a test for the other
 containment direction in `chordsCollide`); our copy was dropped there. #5932 is a cherry-pick, so
@@ -206,10 +206,15 @@ as the daily driver (unoptimized + debug machinery loaded).
 
 ## Running tests
 
-`xcodebuild test` **fails to run the suite** here — its test host can't load the built
-bundle (`unit-tests.xctest` → "executable not found"), a CLI hosting quirk on this
-Xcode-16 setup (the bundle itself is fine; it's the runner). Build the bundle and run it
-directly instead:
+```bash
+bash ai/test.sh
+```
+
+Upstream's script (added at v11.7.0): `xcodebuild test` on the Debug configuration. It ran
+the full suite here on Xcode 16 (2026-09-18). A plain `xcodebuild test` used to fail on this
+setup with the test host unable to load the bundle (`unit-tests.xctest` → "executable not
+found"); why the script does not, nobody checked. If it ever regresses to that, build the
+bundle and run it directly:
 
 ```bash
 xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
@@ -217,7 +222,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **1274 tests, 0 failures**
+### Expected: **1264 tests, 0 failures**
 
 Any failure is a real regression. Nothing here is "expected to be red".
 
@@ -236,7 +241,7 @@ behaviour is unchanged: Pro is still unconditionally on.
 
 ```bash
 git fetch upstream --tags
-git merge upstream/master            # 3-way; has been conflict-free so far
+git merge upstream/master            # 3-way
 ```
 
 Then:
@@ -254,4 +259,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.6.1** (2026-09-12).*
+*Last synced to upstream: **v11.7.0** (2026-09-18).*
