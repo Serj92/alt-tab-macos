@@ -10,6 +10,43 @@ This repo (`Serj92/alt-tab-macos`, remote `origin`) is a **personal fork** of
 
 ---
 
+## Ground rules (the owner's decisions)
+
+Standing decisions. Do not re-open them without the owner.
+
+- **A change is delivered as the production build.** Every piece of work ends with
+  `bash ai/install.sh`: a clean Release build, installed over `/Applications/AltTabFix.app`
+  and launched. Check that it runs (`pgrep -fl AltTabFix.app`). Debug builds (`ai/build.sh`,
+  `ai/run.sh`) are only for checks along the way and never count as the result.
+- **Release carries no test or debug code**: no debug windows, no QA or debug menus, no
+  benchmark, no `--qa-*` harness commands, no harness-only telemetry. When upstream adds
+  harness-only code that reaches Release, gate it behind `#if DEBUG` (see **Debug-strip**
+  below) and check the binary as described in
+  [Updating to a new upstream version](#updating-to-a-new-upstream-version).
+- **The app icon is the original colorful one**, never upstream's white tile (see **Colorful
+  app icon** below).
+- **Background capture stays off** (`captureWindowsInBackground = false`, upstream's default is
+  `true`). The reason is the macOS screen-recording indicator that shows every time a background
+  capture runs, not CPU or battery. Never propose enabling it as a fix. The accepted cost: a window
+  created while the switcher is closed draws its app icon for about half a second, until the
+  on-show capture fills it in. Brave churns windows the most, so its tiles flash most. If that half
+  second is ever worth attacking without the setting, start at `Windows.retireSurfaceForReplacement`:
+  it carries a thumbnail onto a re-created window only for 2s and only on AX-element equality, and
+  it logged zero successful carries across one whole 6-hour session. Measure whether Brave's
+  replacements even take that path before changing anything.
+- **Push only to `origin`**, and only when the owner asks.
+
+The owner's current settings, which every measurement below assumes:
+
+| Setting | Value | Why it matters |
+|---|---|---|
+| Appearance style | Thumbnails | |
+| Appearance size | **Medium**, fixed (2026-09-18) | **Auto** cost about half of each summon's main-thread work, see [Measured: summon cost](#measured-summon-cost-and-the-auto-size) |
+| `windowDisplayDelay` | 0 | the panel appears as soon as it is built, so layout time is directly visible |
+| `captureWindowsInBackground` | false | see above |
+
+---
+
 ## Toolchain
 
 | | This fork | Upstream |
@@ -34,6 +71,7 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped; the macOS-26-only `SCScreenshotManager.captureScreenshot` path falls back to `captureSampleBuffer` (runtime-equivalent on macOS 15) | `HelperExtensions` (`NSSearchField.applySearchStyle`, shared by the switcher and Settings search fields), `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow`, `WindowCaptureEvents` |
 | **Perf micro-opts** | SCWindow indexing by id (avoid O(n²)); `Appearance.resolvedStyle` cache for the tile render hot path. ~~forward focus bookkeeping (rapid Cmd+Tab)~~ — dropped at v11.4.4: upstream's `ActivationFocusResolver` intent mechanism (#5596) covers the race, and the manual `frontmostPid` forward-set would break its `frontmostPid != pid` intent-recording guard | `WindowCaptureEvents.swift`, `Appearance.swift`, `TilesView.swift` |
 | **No event-server read for the Esc tap** | `updateEscapeAbsorptionTap` asked `CGEvent.tapIsEnabled` every time just to compare against the state it wanted. Measured with marks around the two calls separately: the read costs **4–34ms**, the `tapEnable` write **1–7ms**, and once the read blocked the main thread for **246ms** between a dismissal and the next summon. Upstream's audit (`src/main-thread-ipc.md`) had the pair at "0–8ms", which hid it. Nothing but AltTab enables this tap, so the wanted state is now compared against a cached flag; macOS only ever *disables* a tap, and that arrives as `.tapDisabledByUserInput` / `.tapDisabledByTimeout`, so the recovery paths (also wake and unlock) pass `force: true`. `force` only ever re-ENABLES — answering the once-per-dismissal `byUserInput` with another `tapEnable(false)` could re-trigger it. Pattern copied from `TrackpadEvents.setAbsorbTapEnabled`, which already caches the same way | `src/events/KeyboardEvents.swift`, `src/main-thread-ipc.md` |
+| **Colorful app icon** | Upstream's Pro release (`9147a4a8`) replaced the original colorful, no-background icon (overlapping cyan / pink / navy windows) with a white rounded tile, which looked oversized in Launchpad and blurry when rescaled. `resources/icons/app/` (`app.icns`, `app.iconset/icon_512x512{,@2x}.png`, `app.svg`) is restored byte for byte from `9147a4a8^`. Never re-quantize or rescale those files: that is what made the tile blurry. To swap only the installed app's icon, replace the icns and re-sign the main bundle alone (no `--deep`, no `--options runtime`, no entitlements), so the Keychain license item and the TCC grants survive | `resources/icons/app/` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
 | **Debug-strip** | gate `DebugWindow` (the "Debug tools" window) + its menubar item + `BenchmarkRunner` behind `#if DEBUG` so a **Release** build carries no debug machinery (QAMenu + DebugMenu live-graph were already `#if DEBUG`). Same for the test harness's hooks: the `--qa-*` CLI commands (`--qa-state`, `--qa-telemetry`, `--qa-mark=`, and the `--qa-mute-ax-destroys=` / `--qa-stall-main=` fault injections, plus the mute check on every AX destroy), and `TrackingTelemetryRecorder`, whose only readers are those commands — Release gets an empty stub, which also drops a main-queue hop per recorded AX notification. Release answers `--qa-*` with "Couldn't execute command"; `--list`, `--detailed-list`, `--focus=`, `--show=`, `--hide` are real CLI and stay. For a `--qa-*` measurement, use a Debug build | `App.swift`, `Menubar.swift`, `DebugWindow.swift`, `Benchmark.swift`, `CliEvents.swift`, `AxObserverRegistry.swift`, `TrackingTelemetryRecorder.swift` |
 | **No auto-update** | Sparkle is removed entirely: the local SwiftPM package, the framework and its `Updater.app`/`Autoupdate` helpers, `SparkleDelegate`, the `UserDefaultsEvents` class (it existed only to mirror Sparkle's own checkbox back into `updatePolicy`), the menubar's "Check for updates…", the Settings updates-policy row, and the feedback window's pre-form update check. The `updatePolicy` preference itself is left defined but unused, to keep `MacroPreferences` / migrations untouched. Bundle 12MB → 9.5MB. The fork could never update itself anyway (nil feed), so nothing is lost — the feedback window shows its form directly instead of after a check that could only ever fail | `App.swift`, `Menubar.swift`, `GeneralTab.swift`, `PreferencesEvents.swift`, `FeedbackWindow.swift`, `Info.plist`, `project.pbxproj` |
@@ -97,7 +135,7 @@ dismissals. One case timed end to end: the key was released at 00:43:06.668 and 
 before the focus request by design.
 
 The spike is in `[NSWindow orderOut:]` itself. Marks on both sides isolate it: the
-`allSecondaryWindowsCanBecomeKey` toggles around it never exceeded 1ms, and `Window.focus` opens its own
+`SecondaryWindows.canBecomeKey` toggles around it never exceeded 1ms, and `Window.focus` opens its own
 step, so the figure contains neither.
 
 Four explanations tested and rejected:
@@ -123,6 +161,91 @@ Two attribution traps this cost a round trip each, recorded so the next reader s
 
 ---
 
+## Measured: summon cost and the Auto size
+
+Asked "is there anything left to fix or safely speed up?" (2026-09-18, v11.7.0 + fork patches). Method:
+Time Profiler on the installed Release build, 20 scripted `--show=0` / `--hide` cycles (see
+[Measuring performance](#measuring-performance)).
+
+**Idle is already as low as it goes:** ~0% CPU, about 1 wakeup/s, `phys_footprint` 49 MB, 9-17
+threads. **Release build settings are already the fast ones:** `-O`, whole-module, ThinLTO, dead-code
+stripping, arm64 only. The only faster setting left is `-Ounchecked`, which removes safety checks,
+so no.
+
+**The one hot spot was Appearance size Auto.** `App.showUi` took about **14.2ms** of main-thread
+CPU per summon, and `TilesView.resolveAutoSize` about 9ms of that. Auto tries Large, then Medium, then
+Small. For each candidate `dryRunLayoutTileViews` runs `fillTiles`, which runs the full
+`updateRecycledCellWithNewContent` on every tile (texts, icons, status-icon layout, search-highlight
+attributed strings). Then the real pass does all of it again. The owner fixed the size at Medium, and
+the same measurement gave **7.1ms per summon** (whole run: 759ms of main-thread CPU → 484ms).
+
+If Auto ever comes back, there are two ways to make it cheap. Only one is worth it:
+
+- **Width-only dry run: worth it.** The dry run only needs each tile's width. In Thumbnails style that
+  width is `thumbnail width + 2 × edge insets`, at least `TileView.minThumbnailWidth()`
+  (`setFrameWidthHeight`), and the thumbnail width comes from `TileView.thumbnailSize` in
+  `updateValues`. So a dry run could compute the widths without touching any view. The catch: it copies
+  upstream's width formula into its hottest file. Pin the copy with a DEBUG assertion that compares it
+  with the real pass's widths.
+- **Skipping `updatePositions` / `applySearchHighlight` in dry runs: not worth it.** It saves only
+  ~2.6ms, and it is not free: `applySearchHighlight` leaves label attributes that the next
+  `updateValues` measures (`fullTitleWidth`).
+
+**What is left, per summon, and why it stays:**
+
+| Cost | Where | Why it stays |
+|---|---|---|
+| ~3.6ms | `layoutTileViews` → `fillTiles`, the one real layout pass | it *is* the work |
+| ~1.2ms show, ~1.5ms hide | `makeKeyAndOrderFront` / `orderOut` | WindowServer round trips (see the dismissal section) |
+| about half of all main-thread time, with no AltTab frame at all | CoreAnimation commit (layer display, render-server send, image prep), text-input-context deactivation, AppKit's menu-shortcut updater | system work proportional to what is on screen. The menu updater is triggered by `MainMenu.toggle`, which is already change-guarded, and menu shortcuts must be off while the panel is up |
+| one step up to ~36ms | the first summon after launch | cold caches, once per launch |
+
+In `MainThreadStall` terms, 25 of 32 scripted summons had every step under 16ms.
+
+---
+
+## Measuring performance
+
+- **The installed app logs nowhere.** `Logger` only calls `print()`: no `os_log`, nothing in the unified
+  log, nothing recoverable after the fact. To get a log, relaunch it with a file attached, through
+  `open`. TCC judges the *responsible* process, so a copy started straight from a shell reads
+  `accessibility:notGranted` and never shows the switcher:
+  ```bash
+  osascript -e 'tell application "AltTabFix" to quit'; pkill -f "/Applications/AltTabFix.app"
+  open -n --stdout /tmp/alttab-fix.log --stderr /tmp/alttab-fix.log -a /Applications/AltTabFix.app --args --logs=info
+  ```
+  `--logs=` takes `debug`, `info`, `warning` or `error` (the default). stdout to a file is
+  **block-buffered (4 KB)**, so the tail only lands when the app quits normally (`osascript … quit`), not
+  on `pkill`. Costs ~1 MB/hour at idle. `ai/install.sh` relaunches without a log, so re-attach after
+  every install, and relaunch plainly (`open /Applications/AltTabFix.app`) when done.
+- **`MainThreadStall`** names any main-thread step over 16ms in the log (WARN level). Read the two
+  attribution traps in the dismissal section before believing a number.
+- **Scripted summons:** `AltTab --show=0` and `AltTab --hide` (run the binary inside the installed app)
+  drive the same build-and-show pipeline without a keyboard. No modifier is held, so this is not the
+  real key path, and the switcher visibly flashes on screen.
+- **Profiling the installed Release without a rebuild:**
+  ```bash
+  xcrun xctrace record --template 'Time Profiler' --attach <pid> --time-limit 36s --output x.trace
+  # drive --show=0 / --hide meanwhile, then:
+  xcrun xctrace symbolicate --input x.trace --dsym DerivedDataRelease/Build/Products/Release/AltTab.app.dSYM
+  xcrun xctrace export --input x.trace --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' > tp.xml
+  ```
+  The binary is stripped, so the dSYM must match it (`dwarfdump --uuid` on both). In the export the
+  **main thread has no name** (its label starts with two spaces). Many AltTab frames stay bare addresses
+  even after symbolication: resolve them with `atos -i -o <dSYM> -l <load-addr> <addr-1>`, taking
+  `load-addr` from the trace's `<binary name="AltTab">` element.
+- **The `--qa-*` commands exist only in Debug builds** (see Debug-strip). A Debug build is unoptimized,
+  so compare its timings only with other Debug timings.
+- **Memory: measure `phys_footprint`** (`footprint <pid>` or `vmmap --summary`), **not RSS.** On macOS 15
+  AltTab captures through the private path (`CGSHWCaptureWindowList`, since ScreenCaptureKit is buggy
+  there, #5190). The captured images are IOSurfaces shared with the WindowServer: 825 MB virtual, 0
+  resident in AltTab, so thumbnails cost the process almost nothing. "Saving RAM" by downscaling them
+  through a `CGContext` moved them into AltTab's own heap: `phys_footprint` went 61 → 150 MB and
+  CoreAnimation 14 → 59 MB. It was reverted. Don't retry thumbnail memory optimizations without a
+  measured `phys_footprint` win first.
+
+---
+
 ## Cherry-picked upstream PRs (not merged upstream yet)
 
 PRs on `lwouis/alt-tab-macos` that are applied here ahead of upstream. Unlike the
@@ -137,7 +260,18 @@ local patches above, these are **temporary**: when upstream merges one, the next
 #5967 arrived with the v11.6.1 merge as `a694953c` (amended, plus a test for the other
 containment direction in `chordsCollide`); our copy was dropped there. #5932 is a cherry-pick, so
 it keeps its original author; upstream's own merge of it will not be recognised as a duplicate by
-git.
+git. Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --json state,mergedAt`.
+
+### Considered, not taken (2026-09-18)
+
+Open upstream PRs, none reviewed yet:
+
+| PR | What | Status |
+|---|---|---|
+| [#6040](https://github.com/lwouis/alt-tab-macos/pull/6040) | windows closed (W) or quit (Q) from the open switcher leave the list at once instead of after ~0.3s | offered. Only useful if the owner closes or quits from the switcher |
+| [#6032](https://github.com/lwouis/alt-tab-macos/pull/6032) | selection survives title changes when moving with the arrow keys; the right neighbour is selected after a close | offered. Only useful with arrow-key navigation |
+| [#6006](https://github.com/lwouis/alt-tab-macos/pull/6006) | capture state kept after ScreenCaptureKit failures | too large to carry (+1356 / −213, 24 files) |
+| [#5711](https://github.com/lwouis/alt-tab-macos/pull/5711) | trackpad gesture tap dying after days of uptime | adds a 5-minute polling watchdog, against the project's "observe, don't poll" rule |
 
 ---
 
@@ -187,10 +321,12 @@ bash ai/install.sh
 ```
 
 Does a **clean Release build** (`-O`, no `#if DEBUG` code), signed as the `.fix` fork,
-then quits / replaces / relaunches `/Applications/AltTabFix.app`. Clean tree is used to
-avoid incremental codesign flakiness on the embedded Sparkle framework.
+then quits / replaces / relaunches `/Applications/AltTabFix.app`. The clean tree was
+originally there for incremental codesign flakiness on the embedded Sparkle framework.
+Sparkle is gone, but a clean build still guarantees that nothing stale ships.
 
-Release = optimized, no debug windows, no auto-update. This is what you run day-to-day.
+Release = optimized, no debug or QA code, no auto-update, no crash reporter. This is what
+you run day-to-day, and what every change is delivered as (see [Ground rules](#ground-rules-the-owners-decisions)).
 
 ### Iterative testing — Debug
 
@@ -199,8 +335,37 @@ bash ai/build.sh   # Debug build -> DerivedData/Build/Products/Debug/AltTab.app
 bash ai/run.sh     # self-terminating `--benchmark showUi 3` smoke run; prints accessibility:granted
 ```
 
-Debug keeps the `--benchmark` CLI and the debug windows for development. Don't ship it
-as the daily driver (unoptimized + debug machinery loaded).
+Debug keeps the `--benchmark` CLI, the `--qa-*` commands and the debug windows for development.
+`ai/run.sh` starts a *second* instance next to the installed app, and it shows the switcher on
+screen three times before quitting. Don't ship Debug as the daily driver: it is unoptimized and
+loads the debug machinery.
+
+---
+
+## Working on the code
+
+- Upstream's `AGENTS.md` (pulled in by `CLAUDE.md`) holds the coding rules: compact Swift, guard
+  clauses, the specs / tests / implementation triad, main-thread IPC, comment policy. Follow it for
+  fork code too. Leave `CLAUDE.md` and `AGENTS.md` untouched: they are upstream files, and a change
+  there only buys merge conflicts.
+- Mark fork-only code with a `fork-local:` comment that says why it differs from upstream, as the
+  existing patches do. That is what makes a patch recognisable at a conflict.
+- **A new `.swift` file needs four `project.pbxproj` edits** or it will not compile. The project uses
+  explicit file references, not synchronized folders:
+  1. `PBXBuildFile`: `<buildId> /* Foo.swift in Sources */ = {isa = PBXBuildFile; fileRef = <fileRefId> /* Foo.swift */; };`
+  2. `PBXFileReference`: `<fileRefId> /* Foo.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Foo.swift; sourceTree = "<group>"; };`
+  3. the enclosing group's `children`: `<fileRefId> /* Foo.swift */,`
+  4. the target's `PBXSourcesBuildPhase` `files`: `<buildId> /* Foo.swift in Sources */,`
+
+  Use unique 24-hex ids (`grep -c <id> project.pbxproj` must print 0). Mirror an existing sibling
+  file to find all four places. A file used by tests goes into the `unit-tests` target's Sources
+  too.
+- Editors show spurious SourceKit "Cannot find type X in scope" errors, because each file is analysed
+  without its module. Trust `bash ai/build.sh` (`** BUILD SUCCEEDED **`), not the inline diagnostics.
+- `SWIFT_TREAT_WARNINGS_AS_ERRORS = YES`, so a warning fails the build.
+- Before a fork patch, measure (see [Measuring performance](#measuring-performance)), and prefer one
+  seam over edits scattered through upstream code. `TrackingTelemetryRecorder`'s Release stub is the
+  model: one file changed instead of 20 call sites.
 
 ---
 
@@ -241,18 +406,51 @@ behaviour is unchanged: Pro is still unconditionally on.
 
 ```bash
 git fetch upstream --tags
-git merge upstream/master            # 3-way
+git log --oneline master..upstream/master          # what is new; read the commit bodies
+git merge-tree --write-tree --name-only master upstream/master   # dry run: lists conflicted files
+git checkout -b merge-upstream-X.Y.Z
+git merge upstream/master
 ```
+
+Conflicts come mostly from two places: upstream editing code the fork deleted (Sparkle, AppCenter,
+their statics in `App.swift`, their imports), and upstream editing code the #5932 cherry-pick
+touches (`LabelAndControl`, `TileView`, migrations). v11.7.0 had 8 conflicted files, including one
+modify/delete (`AppCenterCrashes.swift`: upstream had changed a comment, the file stays deleted).
+Resolve by intent: keep the fork's removal, take upstream's fix around it. Record each resolution in
+the merge commit's body, as the earlier merges do.
 
 Then:
 
 1. **Drop any [cherry-picked upstream PR](#cherry-picked-upstream-prs-not-merged-upstream-yet)
-   that has since been merged upstream** — otherwise the change is applied twice.
+   that has since been merged upstream**, otherwise the change is applied twice.
 2. **Re-apply `#if compiler(>=6.2)` guards** on any *new* macOS-26 / Liquid Glass /
-   Swift-6.2 code upstream introduced (the big risk area: settings UI, new files).
-3. `bash ai/build.sh` until it compiles on Xcode 16 (fix any new compat issues).
-4. `bash ai/install.sh` to rebuild the Release daily driver and install it.
-5. Sanity-check: rapid Cmd+Tab + your usual flow.
+   Swift-6.2 code upstream introduced (the big risk area: settings UI, new files). A guard can
+   move when upstream moves the code, as the search-field one did into
+   `NSSearchField.applySearchStyle` at v11.7.0.
+3. `bash ai/build.sh` until it compiles on Xcode 16. Watch for helpers upstream deleted that
+   fork code still calls (v11.7.0: `applySystemSelectedSegmentStyle`, used by #5932).
+4. **Check that the local patches survived the auto-merge**, not just the conflicted files:
+   `forceProUnlock` in `LicenseManager.swift`, `escapeTapEnabled` / `force:` in
+   `KeyboardEvents.swift`, `Appearance.resolvedStyle`, the `#if DEBUG` gates (Debug-strip), and no
+   Sparkle / AppCenter code coming back. This must print nothing (a plain `grep Sparkle` also hits
+   upstream's comments):
+   ```bash
+   grep -rnE 'import (Sparkle|AppCenter)|SPUStandard|SparkleDelegate|AppCenterCrash|checkForUpdates' src
+   ```
+5. `bash ai/test.sh`: expect **0 failures**. The new count must equal
+   old count + upstream's delta (`git grep -h 'func test' <rev> -- '*Tests.swift' | wc -l` on
+   `upstream/master` and on `git merge-base master upstream/master`). A missing test means the
+   merge lost one.
+6. Commit the merge, fast-forward `master` (`git checkout master && git merge --ff-only
+   merge-upstream-X.Y.Z`), delete the branch.
+7. `bash ai/install.sh`, then **check the shipped binary** for test and debug code. This must print 0:
+   ```bash
+   strings -a /Applications/AltTabFix.app/Contents/MacOS/AltTab | grep -ciE 'qa-|QAMARK|Debug tools|benchmark|mock-pro'
+   ```
+   If upstream added a new `TrackingTelemetryRecorder` method, the Release build fails at its stub
+   until you add a matching empty one.
+8. Update this file: footer version, the test count, the #5932 note, new resolutions. Then push to
+   `origin` when the owner asks.
 
 Note: `ai/build.sh` signing fails with `No certificate matching 'Local Self-Signed'`
 only when `config/local.xcconfig` is missing — recreate it (see above).
