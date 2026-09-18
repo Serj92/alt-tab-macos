@@ -6,6 +6,7 @@ import Cocoa
 /// **It observes and never decides.** Every entry point here is called after the decision it describes has
 /// already been made — by `AttentionEngine`, by `AxObserverRegistry`, by `WindowAttentionEvents` — so
 /// switching telemetry off cannot change what AltTab does.
+#if DEBUG
 class TrackingTelemetryRecorder {
     static var state = TrackingTelemetryState()
 
@@ -93,3 +94,26 @@ class TrackingTelemetryRecorder {
         DispatchQueue.main.async(execute: block)
     }
 }
+#else
+/// fork-local: nothing but the `--qa-*` commands reads this telemetry, and those are Debug-only (see
+/// `CliServer`), so Release records none of it. That also drops the main-queue hop `axNotification` and
+/// `axProviderFailed` pay for every event they record. The stubs mirror the Debug signatures: when upstream
+/// adds a recorder call, the Release build fails here until a stub is added.
+class TrackingTelemetryRecorder {
+    static func attentionCommitted(pid: pid_t, wid: CGWindowID, processGeneration: UInt64?,
+                                   source: TrackingProvider, reason: String, status: String) {}
+    static func attentionRefused(pid: pid_t, wid: CGWindowID, source: TrackingProvider, reason: String) {}
+    static func trackingGenerationChanged() {}
+    static func processExited(_ pid: pid_t) {}
+    static func axProviderHealth(pid: pid_t, state providerState: AxProviderLifecycle,
+                                 observerGeneration: UInt64, attempts: Int,
+                                 capabilities: [AxNotificationCapability], lastError: AxObserverError?) {}
+    static func axProviderFailed(_ process: ProcessGeneration, _ error: AxObserverError) {}
+    static func axNotification(_ pid: pid_t) {}
+    static func axFocusedTabSignal(pid: pid_t, wid: CGWindowID) {}
+    static func sessionTapEvent(subtype: Int, pid: pid_t?, wid: CGWindowID?, decoded: Bool) {}
+    static func attentionResign(pid: pid_t, wid: CGWindowID, subtype: Int) {}
+    static func attentionTapInvalid(subtype: Int?) {}
+    static func attentionTapLifecycle(installed: Bool, enabled: Bool) {}
+}
+#endif

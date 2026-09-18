@@ -89,6 +89,10 @@ class CliServer {
                 }
             )
         }
+        // fork-local: the `--qa-*` commands exist for the automated test harness, so a Release build answers
+        // them with `error` like any unknown command. `CliClient` still forwards them, which keeps
+        // `AltTab --qa-state` against a Release build a loud failure rather than a second app launch.
+        #if DEBUG
         if rawValue == "--qa-state" {
             return qaState()
         }
@@ -132,6 +136,7 @@ class CliServer {
             Logger.info { "QAMARK \(mark)" }
             return noOutput
         }
+        #endif
         if rawValue.hasPrefix("--focus="),
            let id = CGWindowID(rawValue.dropFirst("--focus=".count)), let window = (Windows.list.first { $0.cgWindowId == id }) {
             window.focus()
@@ -162,6 +167,7 @@ class CliServer {
         return error
     }
 
+    #if DEBUG
     /// Read-only snapshot of everything the switcher would decide, without showing the UI. Exists for the
     /// automated runs: a live assertion oracle that costs one IPC round-trip instead of
     /// parsing debug logs or screenshotting tiles. Mutates nothing — `shown` is computed into a local, not
@@ -442,6 +448,7 @@ class CliServer {
         var size: CGSize?
         var axHash: Int?
     }
+    #endif
 
     private struct JsonWindowList: Codable {
         var windows: [JsonWindow]
