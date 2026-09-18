@@ -14,8 +14,8 @@ final class LicenseManagerTests: XCTestCase {
         // every assertion below about trials and expiry fail. Turn the force off so these tests
         // exercise the licensing logic upstream actually wrote.
         LicenseManager.forceProUnlock = false
-        suiteName = "test-license-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        suiteName = "com.lwouis.alt-tab-macos.tests.license"
+        defaults = TestDefaults.make(suiteName)
         clock = MockClock(now: Date(timeIntervalSince1970: 1_700_000_000))
         keychain = MockKeychain()
         api = MockLicenseAPI()
@@ -24,7 +24,7 @@ final class LicenseManagerTests: XCTestCase {
 
     override func tearDown() {
         LicenseManager.forceProUnlock = true // fork-local, see setUp
-        UserDefaults().removePersistentDomain(forName: suiteName)
+        TestDefaults.tearDown(defaults, suiteName)
         super.tearDown()
     }
 
@@ -485,9 +485,13 @@ final class LicenseManagerTests: XCTestCase {
         defaults.set(true, forKey: "lastValidationResult")
     }
 
-    /// Runs the main run loop briefly so queued `DispatchQueue.main.async` blocks execute.
+    /// Run everything already queued on main, then return. The chain under test is two hops deep (the mock
+    /// API enqueues its completion, which enqueues the state write), so a block enqueued now runs after both.
+    /// A fixed `RunLoop.run(until:)` spin cost 50ms per call for the same guarantee.
     private func drainMainQueue() {
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let drained = expectation(description: "main queue drained")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 1)
     }
 }
 

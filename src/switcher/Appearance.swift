@@ -48,7 +48,7 @@ class Appearance {
     private static var currentSize: AppearanceSizePreference { Preferences.effectiveAppearanceSize(SwitcherSession.activeShortcutIndex) }
     static var currentTheme: AppearanceThemePreference {
         let theme = Preferences.effectiveAppearanceTheme(SwitcherSession.activeShortcutIndex)
-        return theme == .system ? NSAppearance.current.getThemeName() : theme
+        return theme == .system ? NSAppearance.currentDrawing().getThemeName() : theme
     }
 
     static func update() {
@@ -77,7 +77,7 @@ class Appearance {
         if currentStyle == .appIcons {
             appIconsSize(size)
         } else if currentStyle == .titles {
-            titlesSize(isHorizontalScreen, size)
+            titlesSize(size)
         } else {
             thumbnailsSize(isHorizontalScreen, size)
         }
@@ -192,7 +192,7 @@ class Appearance {
         }
     }
 
-    private static func titlesSize(_ isHorizontalScreen: Bool, _ size: AppearanceSizePreference) {
+    private static func titlesSize(_ size: AppearanceSizePreference) {
         hideThumbnails = true
         windowPadding = 18
         windowCornerRadius = 23

@@ -3,8 +3,9 @@ import Darwin
 import ShortcutRecorder
 
 class App: NSApplication {
-    /// periphery:ignore
-    static let activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
+    /// Held for the process lifetime. `static let` is lazy, so `init` has to touch it or App Nap is never
+    /// disabled.
+    private static let activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
         reason: "Prevent App Nap to preserve responsiveness")
     static let bundleIdentifier = Bundle.main.bundleIdentifier!
     static let bundleURL = Bundle.main.bundleURL
@@ -30,13 +31,13 @@ class App: NSApplication {
     private static let launchInventoryGraceInMs = 400
     private static var pendingShowSettingsWindow = false
     private static var firstLaunchSettingsObserver: NSObjectProtocol?
-    // periphery:ignore
     // don't queue multiple delayed rebuildUi() calls
     private static var delayedDisplayScheduled = 0
     private static let switcherUiRefreshThrottler = Throttler(delayInMs: 200)
 
     override init() {
         super.init()
+        _ = Self.activity
         delegate = self
     }
 
@@ -101,19 +102,9 @@ class App: NSApplication {
 
     /// we don't want another window to become key when the TilesPanel is hidden
     static func hideTilesPanelWithoutChangingKeyWindow() {
-        allSecondaryWindowsCanBecomeKey(false)
+        SecondaryWindows.canBecomeKey = false
         TilesPanel.shared.orderOut(nil)
-        allSecondaryWindowsCanBecomeKey(true)
-    }
-
-    private static func allSecondaryWindowsCanBecomeKey(_ canBecomeKey_: Bool) {
-        SettingsWindow.canBecomeKey_ = canBecomeKey_
-        AboutWindow.canBecomeKey_ = canBecomeKey_
-        PermissionsWindow.canBecomeKey_ = canBecomeKey_
-        FeedbackWindow.canBecomeKey_ = canBecomeKey_
-        #if DEBUG
-        DebugWindow.canBecomeKey_ = canBecomeKey_
-        #endif
+        SecondaryWindows.canBecomeKey = true
     }
 
     static func focusTarget() {
@@ -123,6 +114,7 @@ class App: NSApplication {
         focusSelectedWindow(selectedWindow)
     }
 
+    // periphery:ignore:parameters sender - NSMenuItem target/action signature
     @objc static func checkPermissions(_ sender: NSMenuItem) {
         showPermissionsWindow()
     }
@@ -236,10 +228,7 @@ class App: NSApplication {
         firstLaunchSettingsObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: nil, queue: .main) { notification in
             guard notification.object is Day1WelcomeLetterWindow else { return }
-            if let observer = firstLaunchSettingsObserver {
-                NotificationCenter.default.removeObserver(observer)
-                firstLaunchSettingsObserver = nil
-            }
+            NotificationCenter.default.removeObserver(&firstLaunchSettingsObserver)
             DispatchQueue.main.async { showAndCenterSettingsWindowOnFirstLaunch() }
         }
     }
@@ -288,7 +277,8 @@ class App: NSApplication {
     static func focusSelectedWindow(_ selectedWindow: Window?) {
         MainThreadStall.step()
         guard beginHideUi(true) else { return } // already hidden
-        if let window = selectedWindow, MissionControl.state() == .inactive || MissionControl.state() == .showDesktop {
+        let missionControl = MissionControl.state()
+        if let window = selectedWindow, missionControl == .inactive || missionControl == .showDesktop {
             window.focus()
             if Preferences.cursorFollowFocus == .always || (
                 Preferences.cursorFollowFocus == .differentScreen && (Spaces.screenSpacesMap.first { $0.value.contains { space in window.spaceIds.contains(space) } })?.key != NSScreen.active()?.cachedUuid()) {
@@ -408,7 +398,7 @@ class App: NSApplication {
         // are appended with `shouldShowTheUser` still at its default `true`, and the repaint that would
         // filter them is throttled at 200ms — so the first frame can draw a window the filters exclude.
         // Measured on a cold start: three tabs of a 4-tab Finder group were adopted 28ms before the grace
-        // expired, and the group opened unfolded as 3 tiles, then folded a beat later (QA C-01).
+        // expired, and the group opened unfolded as 3 tiles, then folded a beat later (measured live).
         if listChangedSincePress, !Windows.updatesBeforeShowing() { hideUi(); return }
         Appearance.update()
         guard SwitcherSession.isActive else { return }
@@ -499,7 +489,7 @@ class App: NSApplication {
         // Evaluate the "ignore shortcuts" exception for whatever app is already frontmost at launch (#5842):
         // no didActivateApplication fires for it, so without this an app blacklisted with ignore=.always keeps
         // AltTab's shortcut registered after an auto-update relaunch until the user switches away and back.
-        if let frontmostPid = Applications.frontmostPid, let frontmostApp = Applications.findOrCreate(frontmostPid, false) {
+        if let frontmostPid = Applications.frontmostPid, let frontmostApp = Applications.findOrCreate(frontmostPid) {
             checkIfShortcutsShouldBeDisabled(frontmostApp.focusedWindow, frontmostApp)
         }
         CursorEvents.observe()
@@ -607,7 +597,7 @@ extension App: NSApplicationDelegate {
               !licenseKey.isEmpty else {
             return
         }
-        UpgradeTab.showAutoActivating(licenseKey)
+        UpgradeTab.showAutoActivating()
         LicenseManager.shared.activate(licenseKey) { result in
             switch result {
             case .success:
