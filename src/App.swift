@@ -33,7 +33,7 @@ class App: NSApplication {
     private static var firstLaunchSettingsObserver: NSObjectProtocol?
     // don't queue multiple delayed rebuildUi() calls
     private static var delayedDisplayScheduled = 0
-    private static let switcherUiRefreshThrottler = Throttler(delayInMs: 200)
+    private static let switcherUiRepaintCoalescer = RepaintCoalescer()
 
     override init() {
         super.init()
@@ -75,6 +75,11 @@ class App: NSApplication {
         Logger.debug { "active:\(SwitcherSession.isActive)" }
         guard SwitcherSession.current != nil else { return false } // already hidden
         SwitcherSession.current = nil
+        // The badge read only runs while a session is open, so once this one closes its quiet period has no
+        // next call left to throttle: all it can still do is delay the FIRST read of the next session by up
+        // to a second. An app that cleared its badge in between was drawn with the badge it had cleared for
+        // that whole second (QA DB-02).
+        Applications.dockBadgeThrottler.reset()
         hideTilesPanelWithoutChangingKeyWindow()
         if !keepPreview {
             PreviewPanel.hide()
@@ -110,6 +115,9 @@ class App: NSApplication {
     static func focusTarget() {
         guard SwitcherSession.isActive else { return } // already hidden
         let selectedWindow = Windows.selectedWindow()
+        #if DEBUG
+        CliServer.recordSelectionCommit(selectedWindow?.cgWindowId)
+        #endif
         Logger.info { selectedWindow?.debugId }
         focusSelectedWindow(selectedWindow)
     }
@@ -297,21 +305,23 @@ class App: NSApplication {
         CGWarpMouseCursorPosition(point)
     }
 
-    static func refreshOpenUiAfterExternalEvent(_ windowsToScreenshot: [Window], windowRemoved: Bool = false) {
+    static func refreshOpenUiAfterExternalEvent(_ windowsToScreenshot: [Window], windowRemoved: Bool = false,
+                                              immediately: Bool = false) {
         WindowThumbnails.refreshAsync(windowsToScreenshot, .refreshUiAfterExternalEvent, windowRemoved: windowRemoved)
-        switcherUiRefreshThrottler.throttleOrProceed {
+        let repaint = {
             guard SwitcherSession.isActive else { return }
             if !Windows.updatesBeforeShowing() { hideUi(); return }
             refreshUi(true)
         }
+        if immediately { switcherUiRepaintCoalescer.requestImmediately(repaint) }
+        else { switcherUiRepaintCoalescer.request(repaint) }
     }
 
-    static func refreshOpenUiImmediatelyAfterExternalEvent(_ windowsToScreenshot: [Window]) {
-        WindowThumbnails.refreshAsync(windowsToScreenshot, .refreshUiAfterExternalEvent)
-        guard SwitcherSession.isActive else { return }
-        if !Windows.updatesBeforeShowing() { hideUi(); return }
-        refreshUi(true)
+    #if DEBUG
+    static func deferRepaintsForQa(_ milliseconds: Int) {
+        switcherUiRepaintCoalescer.deferRepaints(milliseconds: milliseconds)
     }
+    #endif
 
     static func refreshUi(_ preserveScrollPosition: Bool = false) {
         MainThreadStall.step()
@@ -396,7 +406,7 @@ class App: NSApplication {
         guard SwitcherSession.isActive else { return }
         // A delayed show renders a list that was filtered at the PRESS. Windows discovered during the delay
         // are appended with `shouldShowTheUser` still at its default `true`, and the repaint that would
-        // filter them is throttled at 200ms — so the first frame can draw a window the filters exclude.
+        // filter them is coalesced onto a trailing edge, so the first frame can draw a window the filters exclude.
         // Measured on a cold start: three tabs of a 4-tab Finder group were adopted 28ms before the grace
         // expired, and the group opened unfolded as 3 tiles, then folded a beat later (measured live).
         if listChangedSincePress, !Windows.updatesBeforeShowing() { hideUi(); return }
@@ -561,11 +571,15 @@ extension App: NSApplicationDelegate {
         WindowServerEvents.observe()
         AXUIElement.setGlobalTimeout()
         PreferencesPersistenceCheck.runInBackground()
-        LicenseManager.shared.onBeforeProUnlock = { ProTransitionManager.shared.onProUnlocked() }
+        LicenseManager.shared.onBeforeProUnlock = {
+            if !LicenseManager.shared.isMocked { ProTransitionManager.shared.onProUnlocked() }
+        }
         LicenseManager.shared.onStateChanged = { state in
             Menubar.refreshLicenseMenuItems()
-            syncLicenseCookie(state: state)
-            ProTransitionManager.shared.onLicenseStateChanged()
+            if !LicenseManager.shared.isMocked {
+                syncLicenseCookie(state: state)
+                ProTransitionManager.shared.onLicenseStateChanged()
+            }
             UpgradeTab.refreshStatus()
             SettingsWindow.shared?.refreshUpgradeButton()
             App.resetPreferencesDependentComponents()
@@ -574,11 +588,16 @@ extension App: NSApplicationDelegate {
             NotificationCenter.default.post(name: ProTransitionManager.proLockStateDidChangeNotification, object: nil)
         }
         #if DEBUG
-        // test affordance: `--mock-pro` skips the license keychain round-trip (which prompts/hangs for an
-        // ad-hoc build whose signature doesn't match the real app's keychain items). See QAMenu's Pro button.
-        if CommandLine.arguments.contains("--mock-pro") { LicenseManager.shared.mockProUser() }
-        #endif
+        // The QA launch never initializes persisted licensing: its in-memory state must neither read nor
+        // alter the real license, and it must not schedule a revalidation that can later replace the mock.
+        if CommandLine.arguments.contains("--mock-pro") {
+            LicenseManager.shared.mockProUser()
+        } else {
+            LicenseManager.shared.initialize()
+        }
+        #else
         LicenseManager.shared.initialize()
+        #endif
         SystemPermissions.ensurePermissionsAreGranted()
     }
 

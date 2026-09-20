@@ -98,7 +98,7 @@ the scenario layer drives it, and its per-step invariants police every scenario.
 
 - **Acquisition + admission + attribute ingestion** (`WindowAdmissionResolver`, `findOrCreate`,
   `bestEffortTitle`): AX/CGS IPC and object creation; the reducer takes over at `discoveryLanded`.
-- **Throttling/coalescing** (`windowAttributesThrottler` etc.): IO pacing, carried on effects as flags.
+- **IO scheduling/coalescing**: queue ownership and runloop batching stay in the live shell.
 - **`Windows.removeWindows`**: view/scheduler/subscription cleanup stays live; the reducer decides WHEN
   (`removeWindow` effect) and the harness twins the model part. The MRU-shift semantics exist twice
   (live + harness twin) — the one accepted duplication.
@@ -177,9 +177,8 @@ An 815 cannot move the window order any more (see `WindowEventReducerFocusSpecs`
 the bookkeeping it still owns: an untracked wid it names, and the sequences a real capture recorded.
 
 - **testTwoAltTabsIntoTheSameAppBothMoveTheOrder** — two alt-tabs 219ms apart into one app. The second is a
-  switch inside the app that is already frontmost, so no activation follows it and AltTab naming its own
-  target is the only thing that says the user moved. Unheard, nothing ever corrects it (#5785's stuck
-  switcher).
+  switch inside the app that is already frontmost, so no activation follows it and the app's answer is the
+  only thing that says the user moved. Unheard, nothing ever corrects it (#5785's stuck switcher).
 - **testLeavingFullscreenDoesNotRefrontTheAppsOtherWindows** — the recorded #5849 follow-up: leaving
   fullscreen re-shows the whole desktop Space and every window on it is ordered in. A replay of the capture,
   kept now that the inference that misread it is gone.

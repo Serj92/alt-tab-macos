@@ -160,7 +160,7 @@ class Menubar {
     /// Assigning the menu only for the duration of a synthesized click keeps the branch above while
     /// letting AppKit position the menu and highlight the icon. Clearing `menu` on the next line is
     /// safe because `performClick` doesn't return until menu tracking ends.
-    private static func popUpMenu() {
+    static func popUpMenu() {
         statusItem.menu = menu
         statusItem.button!.performClick(nil)
         statusItem.menu = nil
@@ -322,6 +322,11 @@ class UpgradeMenuItemView: NSView {
         fatalError("Class only supports programmatic initialization")
     }
 
+    override var intrinsicContentSize: NSSize {
+        let labelSize = label.intrinsicContentSize
+        return NSSize(width: NSView.noIntrinsicMetric, height: ceil(labelSize.height) + 6)
+    }
+
     override func layout() {
         super.layout()
         caTransaction { gradientLayer.frame = backdrop.bounds }
@@ -375,6 +380,9 @@ class UpgradeMenuItemView: NSView {
         result.append(NSAttributedString(string: "\n", attributes: mainAttrs))
         result.append(NSAttributedString(string: NSLocalizedString("Get Pro", comment: "Menubar option"), attributes: mainAttrs))
         label.attributedStringValue = result
+        invalidateIntrinsicContentSize()
+        let height = intrinsicContentSize.height
+        if frame.height != height { frame.size.height = height }
     }
 
     override func mouseUp(with event: NSEvent) {

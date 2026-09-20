@@ -70,6 +70,7 @@ class Windows {
                 shouldSelectBestMatchOnSearchChange = true
                 shouldRestoreDefaultSelectionOnSearchClear = false
                 session.hoveredIndex = nil
+                session.hoveredTarget = nil
             }
         }
         sort()
@@ -212,8 +213,9 @@ class Windows {
     }
 
     static func selectedWindow() -> Window? {
-        guard let session = SwitcherSession.current, list.count > session.selectedIndex else { return nil }
-        let window = list[session.selectedIndex]
+        guard let session = SwitcherSession.current,
+              let window = SelectionResolver.selectedWindow(in: list, at: session.selectedIndex,
+                  target: session.selectedTarget, id: { $0.id }) else { return nil }
         return shouldDisplay(window) ? window : nil
     }
 
@@ -239,6 +241,15 @@ class Windows {
         reanchorHover(session)
     }
 
+    /// `closesOneTab`: closing a native tab leaves its window open, drawn by another tab. Minimize, hide,
+    /// quit and fullscreen act on the whole window or app, so its tabs cannot inherit the selection.
+    static func commitToActionTarget(_ window: Window, closesOneTab: Bool) {
+        guard let session = SwitcherSession.current else { return }
+        session.userPickedSelection = true
+        let siblings = closesOneTab ? (window.tabbedSiblingWids ?? []).compactMap { byWindowId[$0]?.id } : []
+        session.removalFallback = SelectionResolver.removalFallback(selectionSnapshot(), target: window.id, tabSiblings: siblings)
+    }
+
     /// The kernel's view of this refresh, plus the one measurement that has to be taken on the FIRST one:
     /// how long the visible list was at the summon. It is read here rather than at the press because it needs
     /// `updatesBeforeShowing()`'s filtering to have run — and both happen in the same main-thread turn as the
@@ -257,7 +268,8 @@ class Windows {
             userPickedSelection: session.userPickedSelection,
             restoreDefaultOnSearchClear: shouldRestoreDefaultSelectionOnSearchClear,
             bestMatchOnSearchChange: shouldSelectBestMatchOnSearchChange,
-            currentWindowIsDrawn: currentWindowIsDrawn())
+            currentWindowIsDrawn: currentWindowIsDrawn(),
+            removalFallback: session.removalFallback)
     }
 
     private static func currentWindowIsDrawn() -> Bool {
@@ -309,6 +321,9 @@ class Windows {
         let previous = session.hoveredIndex
         let current = SelectionResolver.reanchorHover(target: target, in: list.map { $0.id })
         guard current != previous else { return }
+        // The pointer is still over the tile it was on, which now draws another window. Forget that tile so
+        // the next pointer move hovers whatever is under it.
+        TilesView.thumbnailOverView.previousTarget = nil
         session.hoveredIndex = current
         if current == nil { session.hoveredTarget = nil }
         [previous, current].compactMap { $0 }.forEach { TilesView.highlight($0) }
@@ -326,11 +341,7 @@ class Windows {
         case .resetWithoutSelection:
             resetForInitialPick(session)
         case .selectAt(let idx):
-            updateSelectedAndHoveredWindowIndex(idx)
-        case .ensureTargetSet(let idx):
-            if session.selectedTarget == nil && idx < list.count {
-                session.selectedTarget = list[idx].id
-            }
+            updateSelectedAndHoveredWindowIndex(idx, fromRefresh: true)
         }
     }
 
@@ -349,7 +360,9 @@ class Windows {
         }
     }
 
-    static func updateSelectedAndHoveredWindowIndex(_ newIndex: Int, _ fromMouse: Bool = false) {
+    /// `fromRefresh`: the list changed under the switcher, the user did nothing. The hover stays where the
+    /// pointer put it (`reanchorHover` moves it with its window), and a pending `removalFallback` survives.
+    static func updateSelectedAndHoveredWindowIndex(_ newIndex: Int, _ fromMouse: Bool = false, fromRefresh: Bool = false) {
         guard let session = SwitcherSession.current else { return }
         guard newIndex >= 0 && newIndex < list.count else { return }
         let newWindow = list[newIndex]
@@ -366,7 +379,7 @@ class Windows {
             index = session.hoveredIndex
             lastWindowActivityType = .hover
         }
-        if !fromMouse {
+        if !fromMouse && !fromRefresh {
             TilesView.thumbnailOverView.resetHoveredWindow()
         }
         // Search can replace the best match at the same index. Its identity must still move so the
@@ -374,6 +387,7 @@ class Windows {
         if (!fromMouse || Preferences.mouseHoverEnabled)
                && (newIndex != session.selectedIndex || session.selectedTarget != newWindow.id || lastWindowActivityType == .hover) {
             let oldIndex = session.selectedIndex
+            if !fromRefresh { session.removalFallback = nil }
             session.selectedIndex = newIndex
             session.selectedTarget = newWindow.id
             TilesView.highlight(oldIndex)
@@ -398,7 +412,7 @@ class Windows {
         guard let session = SwitcherSession.current else { return }
         guard list.contains(where: { shouldDisplay($0) }) else { return }
         // `list` can shrink while the panel is open (a window closed), and the selection fix-up runs behind
-        // `switcherUiRefreshThrottler`, so a dispatched trackpad/key-repeat step can land here with
+        // `switcherUiRepaintCoalescer`, so a dispatched trackpad/key-repeat step can land here with
         // `selectedIndex` past the end. Clamp like `SelectionResolver` will, instead of trapping.
         let selectedIndex = min(session.selectedIndex, list.count - 1)
         session.userPickedSelection = true  // from here the selection is the USER's pick, not the default
@@ -682,7 +696,8 @@ class Windows {
     }
 
     /// Exact attention named this window, so it is shown on that evidence rather than waiting for AX
-    /// acquisition. This covers a click, AltTab's own target, and the app's focus notification.
+    /// acquisition. This covers a click, AltTab's own target, and the app's focus notification. Admission
+    /// only: it does not move the window order.
     static func promoteAttentionEvidence(_ wid: CGWindowID) {
         let representativeWid = WindowSurfaceInventory.representativeWid(wid)
         guard let window = byWindowId[representativeWid] else { return }
@@ -795,6 +810,7 @@ class Windows {
                 w.application.focusedWindow = nil
             }
             if let wid = w.cgWindowId {
+                Applications.invalidateWindowStateReads([wid])
                 AxObserverRegistry.noteTrackedElement(pid: w.application.pid, wid: wid, element: nil)
                 byWindowId.removeValue(forKey: wid)
                 windowsPendingFocusPromotion.removeValue(forKey: wid)
@@ -830,11 +846,7 @@ class Windows {
             bumpAppWindowSetVersion(w.application.pid)
             if let wid = w.cgWindowId {
                 AXCallScheduler.shared.removeEntries(withPrefix: "wid-\(wid)-")
-                // Both key SHAPES this throttler holds for a window: `<wid>-generic` / `<wid>-title` written
-                // by the attribute reads, and `wid-<wid>-discover` / `wid-<wid>-wsstate` written by the
-                // bridge. Pruning only the first shape left the second accumulating for the whole session.
-                Applications.windowAttributesThrottler.removeEntries(withPrefix: "\(wid)-")
-                Applications.windowAttributesThrottler.removeEntries(withPrefix: "wid-\(wid)-")
+                Applications.titleThrottler.removeEntry(withKey: "\(wid)-title")
                 // likewise both capture resolutions: the full-res Preview fetch keys on `preview-`
                 Applications.screenshotThrottler.removeEntry(withKey: "capture-wid-\(wid)")
                 Applications.screenshotThrottler.removeEntry(withKey: "preview-wid-\(wid)")

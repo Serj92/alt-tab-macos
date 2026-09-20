@@ -49,6 +49,15 @@ class CliServer {
     }()
     static let error = "error"
     static let noOutput = "noOutput"
+    #if DEBUG
+    private(set) static var qaSelectionCommitCount = 0
+    private(set) static var qaLastSelectionCommitWid: CGWindowID?
+
+    static func recordSelectionCommit(_ wid: CGWindowID?) {
+        qaSelectionCommitCount += 1
+        qaLastSelectionCommitWid = wid
+    }
+    #endif
 
     // main.sync is safe here: the main thread never synchronously waits on the CLI thread
     static func executeCommandAndSendReponse(_ rawValue: String) -> Codable {
@@ -96,6 +105,26 @@ class CliServer {
         if rawValue == "--qa-state" {
             return qaState()
         }
+        #if DEBUG
+        if rawValue.hasPrefix("--qa-defer-repaints=") {
+            let ms = Int(rawValue.dropFirst("--qa-defer-repaints=".count)) ?? 0
+            App.deferRepaintsForQa(min(5000, max(0, ms)))
+            return noOutput
+        }
+        if rawValue == "--qa-refuse-next-focus" {
+            FocusIntents.shared.refuseNextForQa()
+            Logger.info { "QA: refusing the next focus" }
+            return noOutput
+        }
+        if rawValue == "--qa-drop-next-discovery", #available(macOS 26.0, *) {
+            WindowCaptureScreenshots.dropNextDiscoveryForQa()
+            return noOutput
+        }
+        // The visual non-regression test opening each window, sheet, popover, alert and menu in turn.
+        if let reply = QaSurfaces.command(rawValue) {
+            return reply
+        }
+        #endif
         // The provider timeline, drained rather than read: each record is reported exactly once, so a test
         // gets the events of its own session and not the whole run's backlog. The harness writes them out as
         // NDJSON (`TrackingTelemetryNdjson`).
@@ -231,6 +260,13 @@ class CliServer {
         let groups = TabGroups.membersByGroup.map {
             QaGroup(groupId: $0.key, members: $0.value, representative: TabGroups.representativeByGroup[$0.key])
         }.sorted { $0.groupId < $1.groupId }
+        #if DEBUG
+        let selectionCommitCount: Int? = qaSelectionCommitCount
+        let lastSelectionCommitWid = qaLastSelectionCommitWid
+        #else
+        let selectionCommitCount: Int? = nil
+        let lastSelectionCommitWid: CGWindowID? = nil
+        #endif
         return QaState(
             at: Date().timeIntervalSince1970,
             frontmostPid: frontmostPid,
@@ -243,6 +279,10 @@ class CliServer {
             missionControl: MissionControl.state().rawValue,
             switcherVisible: SwitcherSession.isActive,
             selectedIndex: SwitcherSession.current?.selectedIndex,
+            selectionCommitCount: selectionCommitCount,
+            lastSelectionCommitWid: lastSelectionCommitWid,
+            hoveredIndex: SwitcherSession.current?.hoveredIndex,
+            windowControlsWid: windowControlsWid(),
             heldWids: Array(Windows.windowsHeldVisibleForTab),
             recentlyCreatedWids: Array(Windows.recentlyCreatedWindows),
             apps: Applications.list.map {
@@ -253,6 +293,11 @@ class CliServer {
             tiles: renderedTiles(),
             layout: renderedLayout(),
             tracking: TrackingTelemetryRecorder.state.summary())
+    }
+
+    private static func windowControlsWid() -> CGWindowID? {
+        guard SwitcherSession.isActive, TilesView.thumbnailOverView.isShowingWindowControls else { return nil }
+        return TilesView.thumbnailOverView.closeButton.window_?.cgWindowId
     }
 
     private static func qaScreens() -> [QaScreen] {
@@ -289,8 +334,18 @@ class CliServer {
                 expectedThumbnailPixelSize: expectedThumbnailPixelSize(window),
                 x: frame.origin.x, y: frame.origin.y, w: frame.size.width, h: frame.size.height,
                 thumbY: view.thumbnail.frame.origin.y, labelY: view.label.frame.origin.y,
-                row: window.rowIndex ?? -1)
+                row: window.rowIndex ?? -1,
+                pointerTarget: pointerTarget(view))
         }
+    }
+
+    /// The tile's centre where a synthetic pointer event would land on it: CGEvent space, origin at the
+    /// top-left of the primary screen, unlike the bottom-left origin of the Cocoa frame it converts from.
+    private static func pointerTarget(_ view: TileView) -> CGPoint? {
+        guard let panel = view.window, let primary = NSScreen.screens.first else { return nil }
+        let inPanel = view.convert(CGPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+        let onScreen = panel.convertPoint(toScreen: inPanel)
+        return CGPoint(x: onScreen.x, y: primary.frame.height - onScreen.y)
     }
 
     /// The pixel size a thumbnail capture of this window should measure right now, from the same
@@ -334,6 +389,15 @@ class CliServer {
         var missionControl: String
         var switcherVisible: Bool
         var selectedIndex: Int?
+        /// DEBUG builds count the selections handed to the focus path. The QA harness snapshots the count
+        /// before injecting input, so it can judge a release after the switcher has correctly closed.
+        var selectionCommitCount: Int?
+        var lastSelectionCommitWid: CGWindowID?
+        /// The tile under the pointer, and the window the traffic lights drawn over it act on (nil: none
+        /// shown). The two must move together: controls left on a tile that now draws another window would
+        /// close the wrong one.
+        var hoveredIndex: Int?
+        var windowControlsWid: CGWindowID?
         var heldWids: [CGWindowID]
         var recentlyCreatedWids: [CGWindowID]
         var apps: [QaApp]
@@ -383,6 +447,8 @@ class CliServer {
         var thumbY: CGFloat
         var labelY: CGFloat
         var row: Int
+        /// Where to post a pointer event to land on the tile (`pointerTarget`); nil when it is not on screen.
+        var pointerTarget: CGPoint?
     }
 
     private struct QaSpace: Codable {

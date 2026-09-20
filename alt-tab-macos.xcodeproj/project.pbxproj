@@ -284,9 +284,12 @@
 		BF0C8F8F1B7A3C4D5E6F7082 /* ContextMenuEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0C8F8E1B7A3C4D5E6F7081 /* ContextMenuEvents.swift */; };
 		BF0C8F9B8014AD21E68B1349 /* HelperExtensionsTestable.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0C810FA0F6BC70E5886E11 /* HelperExtensionsTestable.swift */; };
 		BF0CA0001111222233334444 /* QAMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0CA0005555666677778888 /* QAMenu.swift */; };
+		BF0CA0019999AAAABBBB0001 /* QaSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0CA0019999AAAABBBB0002 /* QaSurfaces.swift */; };
+		BF0CA0029999AAAABBBB0001 /* QaSheetAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0CA0029999AAAABBBB0002 /* QaSheetAnimation.swift */; };
 		BF0CAAAA0000000000001001 /* SearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0CAAAA0000000000000001 /* SearchTests.swift */; };
 		BF0CBBBB0000000000001001 /* OnActionExtensionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0CBBBB0000000000000001 /* OnActionExtensionTests.swift */; };
 		BF0CEEEE0000000000001001 /* PersistedWindowFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0CEEEE0000000000000001 /* PersistedWindowFrameTests.swift */; };
+		BF0CDDDD0000000000001001 /* ProcessLivenessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0CDDDD0000000000000001 /* ProcessLivenessTests.swift */; };
 		C79742CA78D3CC74B6920437 /* menubar-0.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 02540420CE27E6C973652426 /* menubar-0.pdf */; };
 		D04BA0000000000000DCFFF2 /* DynamicColorTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04BA0000000000000DCFFF1 /* DynamicColorTextField.swift */; };
 		D04BAE2100000000ED003003 /* LightLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04BAE2100000000ED003002 /* LightLabel.swift */; };
@@ -424,6 +427,12 @@
 		5A1100000000000000020017 /* AttentionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1100000000000000010017 /* AttentionModel.swift */; };
 		5A1100000000000000030017 /* AttentionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1100000000000000010017 /* AttentionModel.swift */; };
 		5A1100000000000000040017 /* AttentionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1100000000000000010018 /* AttentionModelTests.swift */; };
+		5CC018000000000000000101 /* CoalescedWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC018000000000000000100 /* CoalescedWork.swift */; };
+		5CC018000000000000000102 /* CoalescedWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC018000000000000000100 /* CoalescedWork.swift */; };
+		5CC018000000000000000202 /* CoalescedWorkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC018000000000000000200 /* CoalescedWorkTests.swift */; };
+		5CC019000000000000000101 /* CaptureDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC019000000000000000100 /* CaptureDiscovery.swift */; };
+		5CC019000000000000000102 /* CaptureDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC019000000000000000100 /* CaptureDiscovery.swift */; };
+		5CC019000000000000000202 /* CaptureDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC019000000000000000200 /* CaptureDiscoveryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -705,9 +714,12 @@
 		BF0C8FAF34022E23582797F3 /* ScrollwheelEvents.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ScrollwheelEvents.swift; sourceTree = "<group>"; };
 		BF0C8FB9777EE9BE74EF542B /* zh-HK */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = Localizable.strings; sourceTree = "<group>"; };
 		BF0CA0005555666677778888 /* QAMenu.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = QAMenu.swift; sourceTree = "<group>"; };
+		BF0CA0019999AAAABBBB0002 /* QaSurfaces.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = QaSurfaces.swift; sourceTree = "<group>"; };
+		BF0CA0029999AAAABBBB0002 /* QaSheetAnimation.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = QaSheetAnimation.swift; sourceTree = "<group>"; };
 		BF0CAAAA0000000000000001 /* SearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTests.swift; sourceTree = "<group>"; };
 		BF0CBBBB0000000000000001 /* OnActionExtensionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnActionExtensionTests.swift; sourceTree = "<group>"; };
 		BF0CEEEE0000000000000001 /* PersistedWindowFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistedWindowFrameTests.swift; sourceTree = "<group>"; };
+		BF0CDDDD0000000000000001 /* ProcessLivenessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessLivenessTests.swift; sourceTree = "<group>"; };
 		D04BA0000000000000DCFFF1 /* DynamicColorTextField.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DynamicColorTextField.swift; sourceTree = "<group>"; };
 		D04BAE2100000000ED003002 /* LightLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LightLabel.swift; sourceTree = "<group>"; };
 		D04BA00000000000C0DE0001 /* SettingsSearch.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SettingsSearch.swift; sourceTree = "<group>"; };
@@ -862,6 +874,10 @@
 		5A1100000000000000010011 /* AxObserverRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxObserverRegistry.swift; sourceTree = "<group>"; };
 		5A1100000000000000010017 /* AttentionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionModel.swift; sourceTree = "<group>"; };
 		5A1100000000000000010018 /* AttentionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionModelTests.swift; sourceTree = "<group>"; };
+		5CC018000000000000000100 /* CoalescedWork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoalescedWork.swift; sourceTree = "<group>"; };
+		5CC018000000000000000200 /* CoalescedWorkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoalescedWorkTests.swift; sourceTree = "<group>"; };
+		5CC019000000000000000100 /* CaptureDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDiscovery.swift; sourceTree = "<group>"; };
+		5CC019000000000000000200 /* CaptureDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDiscoveryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -928,6 +944,8 @@
 				D04BAB74451B79FE18B8BEDF /* BackgroundWork.swift */,
 				AA0C8B000000000000000010 /* MoveToApplicationsFolder.swift */,
 				BF0C8A1E7D3F94B6E8C52A01 /* Throttler.swift */,
+				5CC018000000000000000200 /* CoalescedWorkTests.swift */,
+				5CC018000000000000000100 /* CoalescedWork.swift */,
 				5EA8E110000000000000F201 /* SchedulingPolicy.swift */,
 				5EA8E110000000000000F211 /* SchedulingPolicyTests.swift */,
 				AA0C8B000000000000000002 /* UsageStats.swift */,
@@ -982,6 +1000,8 @@
 				BF0C8B5D1A9658E64F8ECB56 /* SystemScrollerStyleEvents.swift */,
 				BF0C8F8E1B7A3C4D5E6F7081 /* ContextMenuEvents.swift */,
 				5F04852D2F09AC9700235D4A /* WindowCaptureEvents.swift */,
+				5CC019000000000000000200 /* CaptureDiscoveryTests.swift */,
+				5CC019000000000000000100 /* CaptureDiscovery.swift */,
 				D04BA4A621A8A15660F973C1 /* KeyboardEvents.swift */,
 				BF0C8643F524515224BF1618 /* KeyboardEventsTestable.swift */,
 				BF0C8A11E7C34D2190AB4401 /* ModifierReleaseLog.swift */,
@@ -1359,6 +1379,8 @@
 				5FBB24D22F389A0400BF7E14 /* Benchmark.swift */,
 				5FBB24E02F389A0400BF7E14 /* MainThreadStall.swift */,
 				BF0CA0005555666677778888 /* QAMenu.swift */,
+				BF0CA0019999AAAABBBB0002 /* QaSurfaces.swift */,
+				BF0CA0029999AAAABBBB0002 /* QaSheetAnimation.swift */,
 			);
 			path = debug;
 			sourceTree = "<group>";
@@ -1531,6 +1553,7 @@
 				BF0C810FA0F6BC70E5886E11 /* HelperExtensionsTestable.swift */,
 				BF0CBBBB0000000000000001 /* OnActionExtensionTests.swift */,
 				BF0CEEEE0000000000000001 /* PersistedWindowFrameTests.swift */,
+				BF0CDDDD0000000000000001 /* ProcessLivenessTests.swift */,
 				BF0C8363D45FECB8D6F8DCD5 /* LightweightTimer.swift */,
 				BF0C83EE9730BCFA41D840A9 /* README.md */,
 				BF0C8C5C0FF5D567BF190DE5 /* ApplicationServices.HIServices.framework.swift */,
@@ -2060,6 +2083,10 @@
 				5C5A1100000000000000C003 /* WindowAcquisitionPolicy.swift in Sources */,
 				5C5A1100000000000000E203 /* PublishedWindows.swift in Sources */,
 				5C5A1100000000000000E302 /* PublishedWindowsTests.swift in Sources */,
+				5CC018000000000000000102 /* CoalescedWork.swift in Sources */,
+				5CC018000000000000000202 /* CoalescedWorkTests.swift in Sources */,
+				5CC019000000000000000102 /* CaptureDiscovery.swift in Sources */,
+				5CC019000000000000000202 /* CaptureDiscoveryTests.swift in Sources */,
 				5EA8E110000000000000F203 /* SchedulingPolicy.swift in Sources */,
 				5EA8E110000000000000F212 /* SchedulingPolicyTests.swift in Sources */,
 				5EA8E110000000000000DA03 /* DragAndDropResolver.swift in Sources */,
@@ -2069,6 +2096,7 @@
 				BF0CAAAA0000000000001001 /* SearchTests.swift in Sources */,
 				BF0CBBBB0000000000001001 /* OnActionExtensionTests.swift in Sources */,
 				BF0CEEEE0000000000001001 /* PersistedWindowFrameTests.swift in Sources */,
+				BF0CDDDD0000000000001001 /* ProcessLivenessTests.swift in Sources */,
 				A053BAD6681629878E72B1F7 /* ProBadgeViewSegmentTests.swift in Sources */,
 				DC8CF4F01C999497352736F1 /* OverrideClickResolverTests.swift in Sources */,
 				DC06402457ECCE6C902FEAE4 /* OverrideClickResolver.swift in Sources */,
@@ -2365,6 +2393,8 @@
 				5FC5980000000000000C0002 /* CGSSymbolicHotKey.swift in Sources */,
 				BF0C80C69EFEF93C18539925 /* PreferencesMigrations.swift in Sources */,
 				BF0C8A2F6E4C85A7D9B63B12 /* Throttler.swift in Sources */,
+				5CC018000000000000000101 /* CoalescedWork.swift in Sources */,
+				5CC019000000000000000101 /* CaptureDiscovery.swift in Sources */,
 				5EA8E110000000000000F202 /* SchedulingPolicy.swift in Sources */,
 				AA0C8A100000000000000001 /* AXCallScheduler.swift in Sources */,
 				AA0C8A1000000000000000B1 /* CGSCallScheduler.swift in Sources */,
@@ -2378,6 +2408,8 @@
 				BF0C88A9AB286CB7CDC1019E /* MainMenu.swift in Sources */,
 				BF0C826C7F8C5F68732FD75B /* DebugMenu.swift in Sources */,
 				BF0CA0001111222233334444 /* QAMenu.swift in Sources */,
+				BF0CA0019999AAAABBBB0001 /* QaSurfaces.swift in Sources */,
+				BF0CA0029999AAAABBBB0001 /* QaSheetAnimation.swift in Sources */,
 				BF0C8E5F4E4D5F7DAEE07C20 /* TilesPanelBackgroundView.swift in Sources */,
 				BF0C8AD478399D2E97AE3FB4 /* CustomRecorderControlTestable.swift in Sources */,
 				BF0C8A5FA46C5E74A071FF4C /* ScrollwheelEvents.swift in Sources */,
