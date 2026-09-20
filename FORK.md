@@ -69,7 +69,7 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 |---|---|---|
 | **Pro unlock** | `LicenseManager.forceProUnlock = true` short-circuits `isProAvailable` / `isProLocked` / `computeState()`. Upstream's real bodies are kept behind the flag rather than deleted, so `LicenseManagerTests` can turn it off in `setUp` and still test them — which is why a full run is green (see [Running tests](#running-tests)) | `src/pro/license/LicenseManager.swift`, `src/pro/license/LicenseManagerTests.swift` |
 | **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped; the macOS-26-only `SCScreenshotManager.captureScreenshot` path falls back to `captureSampleBuffer` (runtime-equivalent on macOS 15) | `HelperExtensions` (`NSSearchField.applySearchStyle`, shared by the switcher and Settings search fields), `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow`, `WindowCaptureEvents` |
-| **Perf micro-opts** | SCWindow indexing by id (avoid O(n²)); `Appearance.resolvedStyle` cache for the tile render hot path. ~~forward focus bookkeeping (rapid Cmd+Tab)~~ — dropped at v11.4.4: upstream's `ActivationFocusResolver` intent mechanism (#5596) covers the race, and the manual `frontmostPid` forward-set would break its `frontmostPid != pid` intent-recording guard | `WindowCaptureEvents.swift`, `Appearance.swift`, `TilesView.swift` |
+| **Perf micro-opts** | `Appearance.resolvedStyle` cache for the tile render hot path. ~~forward focus bookkeeping (rapid Cmd+Tab)~~ — dropped at v11.4.4: upstream's `ActivationFocusResolver` intent mechanism (#5596) covers the race, and the manual `frontmostPid` forward-set would break its `frontmostPid != pid` intent-recording guard | `Appearance.swift`, `TilesView.swift` |
 | **No event-server read for the Esc tap** | `updateEscapeAbsorptionTap` asked `CGEvent.tapIsEnabled` every time just to compare against the state it wanted. Measured with marks around the two calls separately: the read costs **4–34ms**, the `tapEnable` write **1–7ms**, and once the read blocked the main thread for **246ms** between a dismissal and the next summon. Upstream's audit (`src/main-thread-ipc.md`) had the pair at "0–8ms", which hid it. Nothing but AltTab enables this tap, so the wanted state is now compared against a cached flag; macOS only ever *disables* a tap, and that arrives as `.tapDisabledByUserInput` / `.tapDisabledByTimeout`, so the recovery paths (also wake and unlock) pass `force: true`. `force` only ever re-ENABLES — answering the once-per-dismissal `byUserInput` with another `tapEnable(false)` could re-trigger it. Pattern copied from `TrackpadEvents.setAbsorbTapEnabled`, which already caches the same way | `src/events/KeyboardEvents.swift`, `src/main-thread-ipc.md` |
 | **Colorful app icon** | Upstream's Pro release (`9147a4a8`) replaced the original colorful, no-background icon (overlapping cyan / pink / navy windows) with a white rounded tile, which looked oversized in Launchpad and blurry when rescaled. `resources/icons/app/` (`app.icns`, `app.iconset/icon_512x512{,@2x}.png`, `app.svg`) is restored byte for byte from `9147a4a8^`. Never re-quantize or rescale those files: that is what made the tile blurry. To swap only the installed app's icon, replace the icns and re-sign the main bundle alone (no `--deep`, no `--options runtime`, no entitlements), so the Keychain license item and the TCC grants survive | `resources/icons/app/` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
@@ -108,6 +108,16 @@ before the 1s timer ever fires.
 Not the same method as the older numbers (Release, launch → complete `--list`), so treat it as a
 no-regression check rather than a comparable figure. Worth one Release `--list` run if launch ever
 feels slow again.
+
+### Dropped at the v11.7.1 merge
+
+- **SCWindow indexing by id** — superseded. Upstream rewrote the not-cached capture path around
+  `CaptureDiscovery` (a generation per discovery, a 5s watchdog that expires an unanswered one, a
+  256-request cap with merging), and its `finishShareableContent` builds the same
+  `[CGWindowID: SCWindow]` dictionary the fork patch existed for. Nothing fork-local left. The
+  remaining O(n×m) scan in `sortCachedAndNotCached` (`cache.first { $0.windowID == … }`) was never
+  part of the patch and is still there, over the cached array — worth a look only if a summon with
+  many windows ever measures slow in that function.
 
 > `vendor/Sparkle` and `vendor/AppCenter` are still checked in — they are simply not referenced by
 > the target. Deleting them would be a large diff against upstream for no build-time or runtime
@@ -264,7 +274,8 @@ git. Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --j
 
 ### Considered, not taken (2026-09-18)
 
-Open upstream PRs, none reviewed yet:
+Open upstream PRs, none reviewed yet. **#6040 and #6032 have since closed** and their fixes
+arrived with v11.7.1 (`70fa760c`, `02152d9e`) — nothing to carry:
 
 | PR | What | Status |
 |---|---|---|
@@ -387,7 +398,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **1264 tests, 0 failures**
+### Expected: **1350 tests, 0 failures**
 
 Any failure is a real regression. Nothing here is "expected to be red".
 
@@ -415,7 +426,10 @@ git merge upstream/master
 Conflicts come mostly from two places: upstream editing code the fork deleted (Sparkle, AppCenter,
 their statics in `App.swift`, their imports), and upstream editing code the #5932 cherry-pick
 touches (`LabelAndControl`, `TileView`, migrations). v11.7.0 had 8 conflicted files, including one
-modify/delete (`AppCenterCrashes.swift`: upstream had changed a comment, the file stays deleted).
+modify/delete (`AppCenterCrashes.swift`: upstream had changed a comment, the file stays deleted);
+v11.7.1 had 4, plus one that did not conflict at all — upstream's new `#if DEBUG` `QaSurfaces.swift`
+called `App.sparkleDelegate`, which only the build caught. A new file referencing removed code is
+the shape to expect from now on: the merge cannot see it.
 Resolve by intent: keep the fork's removal, take upstream's fix around it. Record each resolution in
 the merge commit's body, as the earlier merges do.
 
@@ -457,4 +471,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.7.0** (2026-09-18).*
+*Last synced to upstream: **v11.7.1** (2026-09-20).*
