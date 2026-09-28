@@ -368,7 +368,10 @@ class Windows {
         let newWindow = list[newIndex]
         guard shouldDisplay(newWindow) else { return }
         var index: Int?
-        if fromMouse { session.userPickedSelection = true }
+        if fromMouse {
+            session.userPickedSelection = true
+            session.searchDiscovery.lastNavigationAt = ProcessInfo.processInfo.systemUptime
+        }
         if fromMouse && (newIndex != session.hoveredIndex || lastWindowActivityType == .focus) {
             let oldIndex = session.hoveredIndex
             session.hoveredIndex = newIndex
@@ -729,9 +732,7 @@ class Windows {
             // `recentlyCreatedWindows`) lives in the reducer's `.discoveryLanded` branch now — every tracked
             // append flows through it.
         }
-        if list.count > TilesView.recycledViews.count {
-            TilesView.recycledViews.append(TileView())
-        }
+        TilesView.growPoolToCoverWindows()
     }
 
     /// Capture continuity facts without retaining the old `Window`. A WindowServer destroy can be a shell
