@@ -398,7 +398,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **1350 tests, 0 failures**
+### Expected: **1403 tests, 0 failures**
 
 Any failure is a real regression. Nothing here is "expected to be red".
 
@@ -429,7 +429,10 @@ touches (`LabelAndControl`, `TileView`, migrations). v11.7.0 had 8 conflicted fi
 modify/delete (`AppCenterCrashes.swift`: upstream had changed a comment, the file stays deleted);
 v11.7.1 had 4, plus one that did not conflict at all — upstream's new `#if DEBUG` `QaSurfaces.swift`
 called `App.sparkleDelegate`, which only the build caught. A new file referencing removed code is
-the shape to expect from now on: the merge cannot see it.
+the shape to expect from now on: the merge cannot see it. v11.8.0 had 1
+(`TilesPanelBackgroundView`: upstream's new default `updateAppearance()` extension goes *outside*
+the `#if compiler(>=6.2)` guard). Its `StapledTicket` is a no-op here — a build signed with Apple
+Development has no stapled ticket to park — and is carried as is to keep the diff at zero.
 Resolve by intent: keep the fork's removal, take upstream's fix around it. Record each resolution in
 the merge commit's body, as the earlier merges do.
 
@@ -471,4 +474,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.7.1** (2026-09-20).*
+*Last synced to upstream: **v11.8.0** (2026-09-28).*
