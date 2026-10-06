@@ -71,7 +71,7 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | **Xcode 16 compat** | `#if compiler(>=6.2)` guards around macOS-26 / Liquid Glass APIs; one trailing comma dropped; the macOS-26-only `SCScreenshotManager.captureScreenshot` path falls back to `captureSampleBuffer` (runtime-equivalent on macOS 15) | `HelperExtensions` (`NSSearchField.applySearchStyle`, shared by the switcher and Settings search fields), `Appearance`, `TilesPanelBackgroundView`, `PermissionsWindow`, `WindowCaptureEvents` |
 | **Perf micro-opts** | `Appearance.resolvedStyle` cache for the tile render hot path. ~~forward focus bookkeeping (rapid Cmd+Tab)~~ — dropped at v11.4.4: upstream's `ActivationFocusResolver` intent mechanism (#5596) covers the race, and the manual `frontmostPid` forward-set would break its `frontmostPid != pid` intent-recording guard | `Appearance.swift`, `TilesView.swift` |
 | **No event-server read for the Esc tap** | `updateEscapeAbsorptionTap` asked `CGEvent.tapIsEnabled` every time just to compare against the state it wanted. Measured with marks around the two calls separately: the read costs **4–34ms**, the `tapEnable` write **1–7ms**, and once the read blocked the main thread for **246ms** between a dismissal and the next summon. Upstream's audit (`src/main-thread-ipc.md`) had the pair at "0–8ms", which hid it. Nothing but AltTab enables this tap, so the wanted state is now compared against a cached flag; macOS only ever *disables* a tap, and that arrives as `.tapDisabledByUserInput` / `.tapDisabledByTimeout`, so the recovery paths (also wake and unlock) pass `force: true`. `force` only ever re-ENABLES — answering the once-per-dismissal `byUserInput` with another `tapEnable(false)` could re-trigger it. Pattern copied from `TrackpadEvents.setAbsorbTapEnabled`, which already caches the same way | `src/events/KeyboardEvents.swift`, `src/main-thread-ipc.md` |
-| **Colorful app icon** | Upstream's Pro release (`9147a4a8`) replaced the original colorful, no-background icon (overlapping cyan / pink / navy windows) with a white rounded tile, which looked oversized in Launchpad and blurry when rescaled. `resources/icons/app/` (`app.icns`, `app.iconset/icon_512x512{,@2x}.png`, `app.svg`) is restored byte for byte from `9147a4a8^`. Never re-quantize or rescale those files: that is what made the tile blurry. To swap only the installed app's icon, replace the icns and re-sign the main bundle alone (no `--deep`, no `--options runtime`, no entitlements), so the Keychain license item and the TCC grants survive | `resources/icons/app/` |
+| **Colorful app icon** | Upstream's Pro release (`9147a4a8`) replaced the original colorful, no-background icon (overlapping cyan / pink / navy windows) with a white rounded tile, which looked oversized in Launchpad and blurry when rescaled; v11.9.0 replaced it again, with a rabbit. Since v11.9.0 upstream ships the icon as one 1024px `app.png` (`CFBundleIconFile`, and `App.appIcon` for every in-app use), so the fork patch is that one file: `app.png` is `app.iconset/icon_512x512@2x.png` from `9147a4a8^`, byte for byte. The old `app.icns` held only the 512 and 1024 images, so macOS was already scaling every smaller size itself. `app.svg` stays as the vector source. Never re-quantize or rescale the PNG: that is what made the tile blurry. To swap only the installed app's icon, replace `Contents/Resources/app.png` and re-sign the main bundle alone (no `--deep`, no `--options runtime`, no entitlements), so the Keychain license item and the TCC grants survive | `resources/icons/app/` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
 | **Debug-strip** | gate `DebugWindow` (the "Debug tools" window) + its menubar item + `BenchmarkRunner` behind `#if DEBUG` so a **Release** build carries no debug machinery (QAMenu + DebugMenu live-graph were already `#if DEBUG`). Same for the test harness's hooks: the `--qa-*` CLI commands (`--qa-state`, `--qa-telemetry`, `--qa-mark=`, and the `--qa-mute-ax-destroys=` / `--qa-stall-main=` fault injections, plus the mute check on every AX destroy), and `TrackingTelemetryRecorder`, whose only readers are those commands — Release gets an empty stub, which also drops a main-queue hop per recorded AX notification. Release answers `--qa-*` with "Couldn't execute command"; `--list`, `--detailed-list`, `--focus=`, `--show=`, `--hide` are real CLI and stay. For a `--qa-*` measurement, use a Debug build | `App.swift`, `Menubar.swift`, `DebugWindow.swift`, `Benchmark.swift`, `CliEvents.swift`, `AxObserverRegistry.swift`, `TrackingTelemetryRecorder.swift` |
 | **No auto-update** | Sparkle is removed entirely: the local SwiftPM package, the framework and its `Updater.app`/`Autoupdate` helpers, `SparkleDelegate`, the `UserDefaultsEvents` class (it existed only to mirror Sparkle's own checkbox back into `updatePolicy`), the menubar's "Check for updates…", the Settings updates-policy row, and the feedback window's pre-form update check. The `updatePolicy` preference itself is left defined but unused, to keep `MacroPreferences` / migrations untouched. Bundle 12MB → 9.5MB. The fork could never update itself anyway (nil feed), so nothing is lost — the feedback window shows its form directly instead of after a check that could only ever fail | `App.swift`, `Menubar.swift`, `GeneralTab.swift`, `PreferencesEvents.swift`, `FeedbackWindow.swift`, `Info.plist`, `project.pbxproj` |
@@ -270,7 +270,7 @@ local patches above, these are **temporary**: when upstream merges one, the next
 #5967 arrived with the v11.6.1 merge as `a694953c` (amended, plus a test for the other
 containment direction in `chordsCollide`); our copy was dropped there. #5932 is a cherry-pick, so
 it keeps its original author; upstream's own merge of it will not be recognised as a duplicate by
-git. Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --json state,mergedAt`.
+git. Still open at v11.9.0 (2026-10-06). Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --json state,mergedAt`.
 
 ### Considered, not taken (2026-09-18)
 
@@ -398,7 +398,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **1403 tests, 0 failures**
+### Expected: **1495 tests, 0 failures**
 
 Any failure is a real regression. Nothing here is "expected to be red".
 
@@ -433,6 +433,10 @@ the shape to expect from now on: the merge cannot see it. v11.8.0 had 1
 (`TilesPanelBackgroundView`: upstream's new default `updateAppearance()` extension goes *outside*
 the `#if compiler(>=6.2)` guard). Its `StapledTicket` is a no-op here — a build signed with Apple
 Development has no stapled ticket to park — and is carried as is to keep the diff at zero.
+v11.9.0 had 6: two modify/delete on the app icon (upstream deleted `app.icns` and the iconset
+for a single `app.png`; the colorful 1024px PNG became that `app.png`), Sparkle / AppCenter
+neighbours in `App.swift`, `PreferencesEvents` and `BackgroundWork`, and `PermissionsWindow`,
+which upstream rewrote around the fork's one dropped trailing comma.
 Resolve by intent: keep the fork's removal, take upstream's fix around it. Record each resolution in
 the merge commit's body, as the earlier merges do.
 
@@ -474,4 +478,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.8.0** (2026-09-28).*
+*Last synced to upstream: **v11.9.0** (2026-10-06).*
