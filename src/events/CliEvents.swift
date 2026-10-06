@@ -1,7 +1,10 @@
 class CliEvents {
+    private static var listening = false
     static let portName = "\(App.bundleIdentifier).cli"
 
     static func observe() {
+        guard !listening else { return }
+        listening = true
         var context = CFMessagePortContext(version: 0, info: nil, retain: nil, release: nil, copyDescription: nil)
         if let messagePort = CFMessagePortCreateLocal(nil, portName as CFString, handleEvent, &context, nil),
            let source = CFMessagePortCreateRunLoopSource(nil, messagePort, 0) {
@@ -106,9 +109,23 @@ class CliServer {
             return qaState()
         }
         #if DEBUG
+        if let reply = QaLifecycle.command(rawValue) { return reply }
         if rawValue.hasPrefix("--qa-defer-repaints=") {
             let ms = Int(rawValue.dropFirst("--qa-defer-repaints=".count)) ?? 0
             App.deferRepaintsForQa(min(5000, max(0, ms)))
+            return noOutput
+        }
+        if rawValue == "--qa-hold-focus-verification" {
+            FocusIntents.shared.holdNextVerificationForQa()
+            return noOutput
+        }
+        if rawValue == "--qa-resume-focus-verification" {
+            FocusIntents.shared.resumeVerificationForQa()
+            return noOutput
+        }
+        if rawValue.hasPrefix("--qa-delay-focus-verification=") {
+            let milliseconds = Int(rawValue.dropFirst("--qa-delay-focus-verification=".count)) ?? 0
+            FocusIntents.shared.delayNextVerificationForQa(milliseconds)
             return noOutput
         }
         if rawValue == "--qa-refuse-next-focus" {
@@ -207,22 +224,7 @@ class CliServer {
         let visibleSpaceIds = Spaces.visibleSpaces
         let windows = Windows.list.enumerated().map { (i, w) -> QaWindow in
             let wid = w.cgWindowId
-            let shown = WindowFilterResolver.shouldShow(
-                w.state, w.application.state,
-                onlyFrontmostApp: filters.appsToShow == .active,
-                excludeFrontmostApp: filters.appsToShow == .nonActive,
-                hideHidden: filters.showHiddenWindows == .hide,
-                hideWindowless: filters.showWindowlessApps == .hide,
-                hideFullscreen: filters.showFullscreenWindows == .hide,
-                hideMinimized: filters.showMinimizedWindows == .hide,
-                onlyVisibleSpaces: filters.spacesToShow == .visible,
-                onlyNonVisibleSpaces: filters.spacesToShow == .nonVisible,
-                onlyPreferredScreen: filters.screensToShow == .showingAltTab,
-                separateTabs: filters.groupTabs == .separateWindows,
-                frontmostPid: frontmostPid,
-                visibleSpaceIds: visibleSpaceIds,
-                exceptions: filters.exceptions,
-                isOnPreferredScreen: w.isOnScreen(NSScreen.preferred))
+            let shown = Windows.shouldShowTheUser(w, filters)
             return QaWindow(
                 index: i,
                 wid: wid,
@@ -238,6 +240,8 @@ class CliServer {
                 tabCount: w.tabCount,
                 phantom: w.isPhantom,
                 phantomLatch: w.cgsPhantomLatch,
+                orderedIn: w.isOrderedIn,
+                alpha: w.alpha,
                 held: wid.map { Windows.windowsHeldVisibleForTab.contains($0) } ?? false,
                 fullscreen: w.isFullscreen,
                 fullscreenMirrored: w.isFullscreenMirrored,
@@ -271,6 +275,7 @@ class CliServer {
             at: Date().timeIntervalSince1970,
             frontmostPid: frontmostPid,
             frontmostApp: NSWorkspace.shared.frontmostApplication?.localizedName,
+            pidUnderCursor: filters.pidUnderCursor,
             currentSpaceId: Spaces.currentSpaceId,
             currentSpaceIndex: Spaces.currentSpaceIndex,
             visibleSpaceIds: visibleSpaceIds,
@@ -292,7 +297,8 @@ class CliServer {
             windows: windows,
             tiles: renderedTiles(),
             layout: renderedLayout(),
-            tracking: TrackingTelemetryRecorder.state.summary())
+            tracking: TrackingTelemetryRecorder.state.summary(),
+            pendingWork: AXCallScheduler.shared.pendingCallCount + CGSCallScheduler.pendingCallCount)
     }
 
     private static func windowControlsWid() -> CGWindowID? {
@@ -378,6 +384,9 @@ class CliServer {
         var at: TimeInterval
         var frontmostPid: pid_t?
         var frontmostApp: String?
+        /// The app the "App under the cursor" scope resolved, as of the press when the switcher is open. Nil
+        /// under any other scope.
+        var pidUnderCursor: pid_t?
         var currentSpaceId: UInt64
         var currentSpaceIndex: Int
         var visibleSpaceIds: [UInt64]
@@ -409,6 +418,10 @@ class CliServer {
         var layout: QaLayout?
         /// provider health and the last committed attention decision (`TrackingTelemetryState`)
         var tracking: TrackingTelemetrySummary
+        /// AX and CGS calls not answered yet. A launch scan finds a window before it has read what kind of
+        /// window it is, so a window list that stopped changing is not yet a complete model; the reads still
+        /// out are counted here. Their answers are applied on main after the count drops.
+        var pendingWork: Int
     }
 
     private struct QaTelemetryDrain: Codable {
@@ -495,6 +508,9 @@ class CliServer {
         var tabCount: Int
         var phantom: Bool
         var phantomLatch: Bool
+        /// The two WindowServer facts the phantom verdict reads, as last recorded.
+        var orderedIn: Bool
+        var alpha: Float
         var held: Bool
         var fullscreen: Bool
         var fullscreenMirrored: Bool

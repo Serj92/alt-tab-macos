@@ -13,13 +13,12 @@ class App: NSApplication {
     static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as! String
     static let licence = Bundle.main.object(forInfoDictionaryKey: "NSHumanReadableCopyright") as! String
     static let repository = "https://github.com/lwouis/alt-tab-macos"
-    static let appIconReps = CGImage.allNamed("app.icns")
+    static let appIcon: CGImage = {
+        let url = Bundle.main.url(forResource: "app", withExtension: "png")!
+        let source = CGImageSourceCreateWithURL(url as CFURL, nil)!
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)!
+    }()
 
-    static func appIcon(for size: NSSize) -> CGImage {
-        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-        let scaled = NSSize(width: size.width * scale, height: size.height * scale)
-        return CGImage.bestMatch(appIconReps, for: scaled)
-    }
     override class var shared: App { super.shared as! App }
     static var supportProjectAction: Selector { #selector(App.supportProject) }
     static var upgradeToProAction: Selector { #selector(App.upgradeToPro) }
@@ -31,8 +30,7 @@ class App: NSApplication {
     private static let launchInventoryGraceInMs = 400
     private static var pendingShowSettingsWindow = false
     private static var firstLaunchSettingsObserver: NSObjectProtocol?
-    // don't queue multiple delayed rebuildUi() calls
-    private static var delayedDisplayScheduled = 0
+    private static var delayedDisplayWork: DispatchWorkItem?
     private static let switcherUiRepaintCoalescer = RepaintCoalescer()
 
     override init() {
@@ -58,7 +56,11 @@ class App: NSApplication {
         // we use -n to open a new instance, to avoid calling applicationShouldHandleReopen
         // we use Bundle.main.bundlePath in case of multiple AltTab versions on the machine
         printStackTrace()
-        Process.launchedProcess(launchPath: "/usr/bin/open", arguments: ["-n", Bundle.main.bundlePath])
+        var arguments = ["-n", Bundle.main.bundlePath]
+        #if DEBUG
+        if QaLifecycle.enabled { arguments += ["--args"] + QaLifecycle.restartArguments }
+        #endif
+        Process.launchedProcess(launchPath: "/usr/bin/open", arguments: arguments)
         App.shared.terminate(nil)
     }
 
@@ -103,6 +105,7 @@ class App: NSApplication {
         Tooltips.hideAll()
         MainMenu.toggle(true)
         ProTransitionManager.shared.onSwitcherDismissed()
+        OnboardingPopover.switcherWasDismissed()
     }
 
     /// we don't want another window to become key when the TilesPanel is hidden
@@ -211,6 +214,32 @@ class App: NSApplication {
         if PermissionsWindow.shared == nil { _ = PermissionsWindow() }
     }
 
+    /// A new user's unfinished first launch resumes the onboarding popover. The popover leads
+    /// into Settings once the shortcut was used; regranting permissions alone does not replay it.
+    #if DEBUG
+    static func replayFirstLaunchForQa() {
+        endFirstLaunchWithPopoverOrSettings()
+        ProTransitionManager.shared.onAppLaunchComplete()
+    }
+    #endif
+
+    private static func endFirstLaunchWithPopoverOrSettings() {
+        let isNewUsersFirstLaunch = !Preferences.settingsWindowShownOnFirstLaunch && ProTransitionState.isFreshInstall
+        let announcesTrial = willShowDay1WelcomeOnAppLaunch()
+        guard isNewUsersFirstLaunch,
+              OnboardingPopover.show(trialDaysToAnnounce: announcesTrial ? trialDaysRemaining() : nil) else {
+            showSettingsWindowOnFirstLaunchIfNeeded()
+            return
+        }
+        ProTransitionManager.shared.state.onboardingInProgress = true
+    }
+
+    private static func trialDaysRemaining() -> Int? {
+        LicenseManager.shared.refreshState()
+        guard case .trial(let daysRemaining) = LicenseManager.shared.state else { return nil }
+        return daysRemaining
+    }
+
     @discardableResult
     private static func showSettingsWindowOnFirstLaunchIfNeeded() -> Bool {
         guard !Preferences.settingsWindowShownOnFirstLaunch else { return false }
@@ -233,6 +262,7 @@ class App: NSApplication {
     }
 
     private static func deferFirstLaunchSettingsUntilDay1WelcomeCloses() {
+        NotificationCenter.default.removeObserver(&firstLaunchSettingsObserver)
         firstLaunchSettingsObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: nil, queue: .main) { notification in
             guard notification.object is Day1WelcomeLetterWindow else { return }
@@ -241,17 +271,21 @@ class App: NSApplication {
         }
     }
 
+    private static func showAndCenterSettingsWindowOnFirstLaunch() {
+        showAndCenterSettingsWindow()
+        Preferences.markSettingsWindowShownOnFirstLaunch()
+    }
+
     /// `showSettingsWindow()` relies on a saved autosave frame to position the window. On first
     /// launch there's no saved frame, and `showSecondaryWindow`'s fallback centering doesn't always
     /// stick (the window has been observed at the lower-left corner). Force a center pass after
     /// showing so the user sees the window in the middle of the screen.
-    private static func showAndCenterSettingsWindowOnFirstLaunch() {
+    static func showAndCenterSettingsWindow() {
         showSettingsWindow()
         if let window = SettingsWindow.shared {
             NSScreen.preferred.repositionPanel(window)
             window.center()
         }
-        Preferences.markSettingsWindowShownOnFirstLaunch()
     }
 
     static func showPermissionsWindow() {
@@ -342,6 +376,7 @@ class App: NSApplication {
 
     static func showUiOrCycleSelection(_ shortcutIndex: Int, _ forceDoNothingOnRelease_: Bool) {
         MainThreadStall.step()
+        OnboardingPopover.switcherWasSummoned()
         let session = SwitcherSession.current ?? {
             let new = SwitcherSession()
             // The window set as it stood at the press. Only something ABSENT from it can be a newcomer that
@@ -355,6 +390,8 @@ class App: NSApplication {
         Logger.debug { "isFirstSummon:\(session.isFirstSummon) shortcutIndex:\(shortcutIndex)" }
         UsageStats.recordTrigger(shortcutIndex)
         if session.isFirstSummon || shortcutIndex != session.shortcutIndex {
+            delayedDisplayWork?.cancel()
+            delayedDisplayWork = nil
             NSScreen.updatePreferred()
             let isLaunchSummon = isVeryFirstSummon
             if isVeryFirstSummon {
@@ -389,13 +426,13 @@ class App: NSApplication {
             if displayDelay == DispatchTimeInterval.milliseconds(0) {
                 buildUiAndShowPanel()
             } else {
-                delayedDisplayScheduled += 1
-                DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + displayDelay) { () -> () in
-                    if delayedDisplayScheduled == 1 {
-                        buildUiAndShowPanel(true)
-                    }
-                    delayedDisplayScheduled -= 1
+                let work = DispatchWorkItem { [weak session] in
+                    guard let session, SwitcherSession.current === session else { return }
+                    delayedDisplayWork = nil
+                    buildUiAndShowPanel(true)
                 }
+                delayedDisplayWork = work
+                DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + displayDelay, execute: work)
             }
         } else {
             cycleSelection(.leading)
@@ -473,6 +510,9 @@ class App: NSApplication {
         Appearance.update()
         TilesPanel.updateMaxPossibleThumbnailSize()
         TilesPanel.updateMaxPossibleAppIconSize()
+        // Discovery starts as soon as Accessibility is granted, so windows found while the permissions window
+        // still waited on Screen Recording fetched their app icon at size zero, and got none
+        Set(Windows.list.map { $0.application }).forEach { $0.fetchAppIcon() }
         Menubar.initialize()
         MainMenu.create()
         _ = TilesPanel()
@@ -516,21 +556,26 @@ class App: NSApplication {
         #if DEBUG
         BenchmarkRunner.startIfNeeded()
         #endif
-        showSettingsWindowOnFirstLaunchIfNeeded()
+        endFirstLaunchWithPopoverOrSettings()
         if pendingShowSettingsWindow {
             pendingShowSettingsWindow = false
             showSettingsWindow()
         }
         #if DEBUG
-        QAMenu.shared = QAMenu()
-        QAMenu.shared?.orderFront(nil)
-        if QAMenu.openSettingsOnLaunch { App.showSettingsWindow() }
-        if QAMenu.graphEnabled { DebugMenu.setEnabled(true) }
+        if !QAMenu.suppressed {
+            QAMenu.shared = QAMenu()
+            QAMenu.shared?.orderFront(nil)
+            if QAMenu.openSettingsOnLaunch { App.showSettingsWindow() }
+            if QAMenu.graphEnabled { DebugMenu.setEnabled(true) }
+        }
         #endif
         SearchDiscoveryHint.shared.initialize()
         UsageStats.prune()
         ProTransitionManager.shared.onAction = { ProPromptHost.shared.dispatch($0) }
         ProTransitionManager.shared.onAppLaunchComplete()
+        #if DEBUG
+        if QaLifecycle.enabled { QaLifecycle.finishedLaunching = true; QaLifecycle.launchCount += 1 }
+        #endif
         Logger.info { "Finished launching AltTab" }
     }
 }
@@ -547,6 +592,12 @@ extension App: NSApplicationDelegate {
         // if a queued discovery block drains re-entrantly before this runs, it traps on the nil queue (#5819).
         // preStart just allocates queues and depends on nothing, so it's safe at the very top.
         BackgroundWork.preStart()
+        #if DEBUG
+        if QaLifecycle.enabled {
+            BackgroundWork.cliEventsThread = BackgroundWork.BackgroundThreadWithRunLoop("cliMessages", .userInteractive)
+            CliEvents.observe()
+        }
+        #endif
         // Same reasoning as the queues above: a preference the user never changed lives only in the
         // registration domain, so reading one before `registerDefaults()` traps on the force-unwrap in
         // `CachedUserDefaults.getThenConvertOrReset`. The "move to /Applications" modal below drains the
