@@ -21,6 +21,8 @@ class Application: NSObject {
     /// low-res source apart from one caused by an undersized `maxPossibleAppIconSize`.
     var iconSourcePixels: Int?
     var dockLabel: String?
+    /// fork-local: set by `AudioEvents`; which of this app's windows show the playing-audio status icon
+    var audio = AppAudio.silent
     /// Mirrors of the two `NSRunningApplication` properties this class reads repeatedly. Reading either one
     /// off `runningApplication` triggers a full LaunchServices dynamic-property refresh, and
     /// `canShowWindowlessPlaceholder` reads three of them per call. Both are KVO-compliant, so the observers

@@ -313,6 +313,7 @@ class TileView: FlippedView {
             isHidden: element.isHidden && !Preferences.hideStatusIcons,
             isFullscreen: element.isFullscreen && !Preferences.hideStatusIcons,
             isMinimized: element.isMinimized && !Preferences.hideStatusIcons,
+            isPlayingAudio: element.isPlayingAudio && !Preferences.hideStatusIcons,
             showSpace: !(element.isWindowlessApp || Spaces.isSingleSpace() || Preferences.hideSpaceNumberLabels || {
                 let shortcutIndex = SwitcherSession.current?.shortcutIndex ?? 0
                 return Preferences.spacesToShow[shortcutIndex] == .visible && (

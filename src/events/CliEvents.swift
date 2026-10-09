@@ -331,6 +331,7 @@ class CliServer {
             return QaTile(index: i, wid: window.cgWindowId, title: window.title,
                 app: window.application.runningApplication.localizedName,
                 minimizedIcon: icons[StatusIconsView.minimizedIdx].visible,
+                audioIcon: icons[StatusIconsView.audioIdx].visible,
                 fullscreenIcon: icons[StatusIconsView.fullscreenIdx].visible,
                 appHiddenIcon: icons[StatusIconsView.hiddenIdx].visible,
                 spaceIcon: icons[StatusIconsView.spaceIdx].visible,
@@ -435,6 +436,8 @@ class CliServer {
         var title: String
         var app: String?
         var minimizedIcon: Bool
+        // fork-local: see AudioEvents
+        var audioIcon: Bool
         var fullscreenIcon: Bool
         var appHiddenIcon: Bool
         var spaceIcon: Bool

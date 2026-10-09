@@ -465,6 +465,7 @@ class App: NSApplication {
         KeyRepeatTimer.startRepeatingKeyNextWindow()
         let prioritizedIds = TilesView.windowIdsInViewport()
         WindowThumbnails.refreshAsync(Windows.list, .refreshOnlyThumbnailsAfterShowUi, prioritizedIds: prioritizedIds)
+        AudioEvents.switcherShown() // fork-local: playing-audio status icon
     }
 
     static func checkIfShortcutsShouldBeDisabled(_ activeWindow: Window?, _ activeApp: Application?) {
@@ -525,6 +526,7 @@ class App: NSApplication {
         InputSourceEvents.observe()
         ScreenLockEvents.observe()
         SleepWakeEvents.observe()
+        AudioEvents.observe() // fork-local: playing-audio status icon
         Applications.initialDiscovery()
         // The one initial window inventory; later ones ride events + switcher shows. It belongs here, not in
         // the WindowServer tap: the tap is installed before the permission gate, and this needs `Spaces.refresh`

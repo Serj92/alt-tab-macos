@@ -11,6 +11,13 @@ class StatusIconsView: FlippedView {
     static let hiddenIdx = 1
     static let fullscreenIdx = 2
     static let minimizedIdx = 3
+    // fork-local: drawn from `NSImage(systemSymbolName:)`, since the bundled SF Pro subset has no speaker glyph
+    // and regenerating it needs SF Symbols.app. The SF Symbol name stands in for the glyph in `Icon.symbol`.
+    // A white speaker on a green disk, the only colored status icon, so the one sounding tile stands out among
+    // dozens (the owner's pick over a tinted border, the playing tab's title and animated waves).
+    static let audioIdx = 4
+    private static let audioSymbolName = "speaker.wave.2.circle.fill"
+    private static var audioImageCache: (size: CGFloat, image: NSImage)?
 
     private static let defaultSymbols: [(Symbols, String?)] = [
         (.circledNumber0, nil),
@@ -37,6 +44,7 @@ class StatusIconsView: FlippedView {
 
     override init(frame: NSRect) {
         icons = Self.defaultSymbols.map { Icon(symbol: $0.0.rawValue, tooltip: $0.1) }
+            + [Icon(symbol: Self.audioSymbolName, tooltip: NSLocalizedString("Playing audio", comment: ""))]
         iconCellSize = Self.measureIconCellSize()
         super.init(frame: frame)
     }
@@ -73,7 +81,8 @@ class StatusIconsView: FlippedView {
 
     var totalWidth: CGFloat { CGFloat(visibleCount) * TilesView.layoutCache.iconWidth }
 
-    func update(isHidden: Bool, isFullscreen: Bool, isMinimized: Bool, showSpace: Bool) {
+    func update(isHidden: Bool, isFullscreen: Bool, isMinimized: Bool, isPlayingAudio: Bool, showSpace: Bool) {
+        icons[Self.audioIdx].visible = isPlayingAudio
         icons[Self.hiddenIdx].visible = isHidden
         icons[Self.fullscreenIdx].visible = isFullscreen
         icons[Self.minimizedIdx].visible = isMinimized
@@ -146,7 +155,25 @@ class StatusIconsView: FlippedView {
     override func draw(_ dirtyRect: NSRect) {
         guard visibleCount > 0 else { return }
         forEachVisibleIcon { icon, rect in
+            guard icon.symbol != Self.audioSymbolName else { return Self.drawAudioImage(in: rect) }
             Self.cachedAttrString(for: icon.symbol).draw(at: rect.origin)
         }
+    }
+
+    /// Sized like the glyphs (`cachedAttrString`'s font size), centered in the cell.
+    private static func drawAudioImage(in cell: NSRect) {
+        let image = audioImage()
+        let origin = NSPoint(x: cell.midX - image.size.width / 2, y: cell.midY - image.size.height / 2)
+        image.draw(in: NSRect(origin: origin, size: image.size).integral, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
+
+    private static func audioImage() -> NSImage {
+        let size = Appearance.fontHeight
+        if let cache = audioImageCache, cache.size == size { return cache.image }
+        let configuration = NSImage.SymbolConfiguration(pointSize: (size * 0.85).rounded(), weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white, .systemGreen]))
+        let image = NSImage(systemSymbolName: audioSymbolName, accessibilityDescription: nil)!.withSymbolConfiguration(configuration)!
+        audioImageCache = (size, image)
+        return image
     }
 }

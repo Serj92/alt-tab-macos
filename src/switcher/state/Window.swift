@@ -51,6 +51,8 @@ class Window {
     /// members disagreeing on who is visible. Get-only, so no call site can write it back.
     var isTabbed: Bool { cgWindowId.map { TabGroups.isTabbed($0) } ?? false }
     var isHidden: Bool { get { application.isHidden } }
+    /// fork-local: see `AudioEvents`
+    var isPlayingAudio: Bool { application.audio.includes(cgWindowId) }
     var dockLabel: String? { get { application.dockLabel } }
     var screenId: ScreenUuid?
     var axUiElement: AXUIElement?
