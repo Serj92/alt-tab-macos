@@ -272,7 +272,7 @@ local patches above, these are **temporary**: when upstream merges one, the next
 #5967 arrived with the v11.6.1 merge as `a694953c` (amended, plus a test for the other
 containment direction in `chordsCollide`); our copy was dropped there. #5932 is a cherry-pick, so
 it keeps its original author; upstream's own merge of it will not be recognised as a duplicate by
-git. Still open at v11.9.0 (2026-10-06). Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --json state,mergedAt`.
+git. Still open at v11.9.2 (2026-10-14). Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --json state,mergedAt`.
 
 ### Considered, not taken (2026-09-18)
 
@@ -400,7 +400,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **1524 tests, 0 failures**
+### Expected: **1537 tests, 0 failures**
 
 Any failure is a real regression. Nothing here is "expected to be red".
 
@@ -439,6 +439,8 @@ v11.9.0 had 6: two modify/delete on the app icon (upstream deleted `app.icns` an
 for a single `app.png`; the colorful 1024px PNG became that `app.png`), Sparkle / AppCenter
 neighbours in `App.swift`, `PreferencesEvents` and `BackgroundWork`, and `PermissionsWindow`,
 which upstream rewrote around the fork's one dropped trailing comma.
+v11.9.2 (with v11.9.1) had 1: a modify/delete on `SparkleDelegate.swift` (upstream added a `day=`
+parameter to the update check; the file stays deleted).
 Resolve by intent: keep the fork's removal, take upstream's fix around it. Record each resolution in
 the merge commit's body, as the earlier merges do.
 
@@ -485,4 +487,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.9.0** (2026-10-06).*
+*Last synced to upstream: **v11.9.2** (2026-10-14).*
