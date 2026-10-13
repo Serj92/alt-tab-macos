@@ -5,12 +5,14 @@ class TileOverView: FlippedView {
     var closeButton = TrafficLightButton(.close, NSLocalizedString("Close window", comment: ""))
     var minimizeButton = TrafficLightButton(.miniaturize, NSLocalizedString("Minimize/Deminimize window", comment: ""))
     var maximizeButton = TrafficLightButton(.fullscreen, NSLocalizedString("Fullscreen/Defullscreen window", comment: ""))
+    // fork-local: see `PinnedWindows`
+    var pinButton = TrafficLightButton(.pin, NSLocalizedString("Pin/Unpin window", comment: ""))
     var isShowingWindowControls = false
     weak var scrollView: ScrollView?
     var previousTarget: TileView?
     private var previousHoveredButton: TrafficLightButton?
 
-    var windowControlButtons: [TrafficLightButton] { [quitButton, closeButton, minimizeButton, maximizeButton] }
+    var windowControlButtons: [TrafficLightButton] { [quitButton, closeButton, minimizeButton, maximizeButton, pinButton] }
 
     // periphery:ignore - AppKit private overrides, found by the ObjC runtime rather than called
     @objc func _windowChangedKeyState() {}
@@ -133,10 +135,15 @@ class TileOverView: FlippedView {
             x: view.frame.origin.x + view.thumbnail.frame.origin.x,
             y: view.frame.origin.y + view.thumbnail.frame.origin.y
         )
-        let thumbnailWidth = view.thumbnail.frame.width
+        // fork-local: the pin button keeps the top-right corner, so the row on the left wraps before reaching it
+        let thumbnailWidth = view.thumbnail.frame.width - TrafficLightButton.size - TrafficLightButton.spacing
+        let pinHidden = window.cgWindowId == nil
+        if pinButton.isHidden != pinHidden { pinButton.isHidden = pinHidden }
+        pinButton.needsDisplay = true
+        assignIfDifferent(&pinButton.frame.origin, TrafficLightButton.pinOrigin(thumbnail: NSRect(origin: thumbnailOrigin, size: view.thumbnail.frame.size)))
         var xOffset = CGFloat(3)
         var yOffset = CGFloat(2)
-        for button in windowControlButtons {
+        for button in windowControlButtons where button !== pinButton {
             let shouldHide =
                 (button.type == .quit && !window.application.canBeQuit()) ||
                 (button.type == .close && !window.canBeClosed()) ||

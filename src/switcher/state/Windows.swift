@@ -284,7 +284,8 @@ class Windows {
             restoreDefaultOnSearchClear: shouldRestoreDefaultSelectionOnSearchClear,
             bestMatchOnSearchChange: shouldSelectBestMatchOnSearchChange,
             currentWindowIsDrawn: currentWindowIsDrawn(),
-            removalFallback: session.removalFallback)
+            removalFallback: session.removalFallback,
+            pickOrder: pickOrder())
     }
 
     private static func currentWindowIsDrawn() -> Bool {
@@ -534,6 +535,12 @@ class Windows {
     }
 
     private static func sort() {
+        list = sorted(list, pinsFirst: true)
+    }
+
+    /// fork-local: `pinsFirst: false` is the order the list would have without pinned windows, the one the
+    /// default pick reads (`pickOrder`). Pins never apply under search, nor to one tile per app.
+    private static func sorted(_ windows: [Window], pinsFirst: Bool) -> [Window] {
         // Raw, as `shouldDisplay` passes it: smart-case reads its uppercase letters, and `Search` caches per raw query.
         let query = SwitcherSession.current?.searchQuery ?? ""
         let normalizedQuery = Search.normalizedQuery(query)
@@ -545,9 +552,10 @@ class Windows {
         let hiddenAtEnd = Preferences.showHiddenWindows(shortcutIndex) == .showAtTheEnd
         let minimizedAtEnd = Preferences.showMinimizedWindows(shortcutIndex) == .showAtTheEnd
         let sortType = orderSortType(Preferences.windowOrder(shortcutIndex))
+        let pinsApply = pinsFirst && !searchActive && !Preferences.showsOneWindowPerApp(shortcutIndex)
         // Precompute each window's ordering facts once (O(n) Search calls), then sort on the snapshots.
-        let facts = Dictionary(uniqueKeysWithValues: list.map { (ObjectIdentifier($0), orderWindow($0, query, searchActive)) })
-        list.sort {
+        let facts = Dictionary(uniqueKeysWithValues: windows.map { (ObjectIdentifier($0), orderWindow($0, query, searchActive, pinsApply)) })
+        return windows.sorted {
             WindowOrderResolver.isOrderedBefore(
                 facts[ObjectIdentifier($0)]!, facts[ObjectIdentifier($1)]!,
                 searchActive: searchActive,
@@ -558,12 +566,23 @@ class Windows {
         }
     }
 
-    private static func orderWindow(_ window: Window, _ query: String, _ searchActive: Bool) -> OrderWindow {
+    private static func orderWindow(_ window: Window, _ query: String, _ searchActive: Bool, _ pinsApply: Bool) -> OrderWindow {
         OrderWindow(
             state: window.state,
             app: window.application.state,
             searchMatches: searchActive ? Search.matches(window, query: query) : false,
-            searchRelevance: searchActive ? Search.relevance(for: window, query: query) : 0)
+            searchRelevance: searchActive ? Search.relevance(for: window, query: query) : 0,
+            pinRank: pinsApply ? PinnedWindows.rank(window.cgWindowId) : nil)
+    }
+
+    /// fork-local: see `SelectionInputs.pickOrder`. Re-derived from the list as it is now, so a window added
+    /// or removed since the last sort cannot leave it stale.
+    private static func pickOrder() -> [Int]? {
+        guard !PinnedWindows.wids.isEmpty else { return nil }
+        let withoutPins = sorted(list, pinsFirst: false)
+        guard !withoutPins.elementsEqual(list, by: ===) else { return nil }
+        let index = Dictionary(uniqueKeysWithValues: list.enumerated().map { (ObjectIdentifier($1), $0) })
+        return withoutPins.map { index[ObjectIdentifier($0)]! }
     }
 
     private static func orderSortType(_ p: WindowOrderPreference) -> OrderSortType {

@@ -52,6 +52,9 @@ struct SelectionInputs: Equatable {
     /// Defaults to `true`: the ordinary case, and what every scenario written before #5941 assumes.
     var currentWindowIsDrawn = true
     var removalFallback: SelectionRemovalFallback? = nil
+    /// fork-local: `list` indexes in the order the list would have without pinned windows (`PinnedWindows`),
+    /// nil when pins moved nothing. The default pick reads the list in this order.
+    var pickOrder: [Int]? = nil
 }
 
 /// Who inherits the selection if the window a shortcut action was aimed at leaves the list, recorded at the
@@ -148,14 +151,21 @@ enum SelectionResolver {
 
     /// Mirrors `setInitialSelectedAndHoveredWindowIndex` — picks the index, defers reset to wrapper.
     static func initialPickIndex(_ i: SelectionInputs) -> Int? {
-        if i.useLastFocusedRule, let idx = getLastFocusedOrderWindowIndex(i.list) {
+        // fork-local: pinned windows lead the drawn list, but the default pick still means "the window you
+        // were on before", so it is made over the list as it would be without them, then mapped back
+        guard let order = i.pickOrder, order.count == i.list.count else { return initialPickIndex(i, i.list) }
+        return initialPickIndex(i, order.map { i.list[$0] }).map { order[$0] }
+    }
+
+    private static func initialPickIndex(_ i: SelectionInputs, _ list: [SelectionWindow]) -> Int? {
+        if i.useLastFocusedRule, let idx = getLastFocusedOrderWindowIndex(list) {
             return idx
         }
         // Edge case: top two windows both minimized — land on index 0 rather than cycling past.
-        if i.list.count >= 2 && i.list[0].isMinimized && i.list[1].isMinimized {
-            return i.list[0].visible ? 0 : nil
+        if list.count >= 2 && list[0].isMinimized && list[1].isMinimized {
+            return list[0].visible ? 0 : nil
         }
-        return defaultPickIndexAsOfSummon(i.list, i.visibleCountAtSummon, i.currentWindowIsDrawn)
+        return defaultPickIndexAsOfSummon(list, i.visibleCountAtSummon, i.currentWindowIsDrawn)
     }
 
     /// The default pick, over the MRU as it stood when the shortcut was pressed.

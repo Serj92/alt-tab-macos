@@ -11,6 +11,10 @@
 		A0D10E000000000000000012 /* AudioEventsTestable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D10E000000000000000002 /* AudioEventsTestable.swift */; };
 		A0D10E000000000000000013 /* AudioEventsTestable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D10E000000000000000002 /* AudioEventsTestable.swift */; };
 		A0D10E000000000000000014 /* AudioEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D10E000000000000000003 /* AudioEventsTests.swift */; };
+		A0D10E000000000000000015 /* PinnedWindows.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D10E000000000000000004 /* PinnedWindows.swift */; };
+		A0D10E000000000000000016 /* PinnedWindowsTestable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D10E000000000000000005 /* PinnedWindowsTestable.swift */; };
+		A0D10E000000000000000017 /* PinnedWindowsTestable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D10E000000000000000005 /* PinnedWindowsTestable.swift */; };
+		A0D10E000000000000000018 /* PinnedWindowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D10E000000000000000006 /* PinnedWindowsTests.swift */; };
 		1C96101BC5817A7F85FA1F8D /* titles_show_running_applications_light@2x.heic in Resources */ = {isa = PBXBuildFile; fileRef = 1C961F57248D4E2377A9038E /* titles_show_running_applications_light@2x.heic */; };
 		1C96108A0CB2565233FE100B /* TableGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C961FB3DCF4906FEEF4A23D /* TableGroupView.swift */; };
 		1C9610F8AF7AD8CA53B62913 /* titles_hide_status_icons_light@2x.heic in Resources */ = {isa = PBXBuildFile; fileRef = 1C961E64CF8FB6E3FDAA3DAA /* titles_hide_status_icons_light@2x.heic */; };
@@ -489,6 +493,9 @@
 		A0D10E000000000000000001 /* AudioEvents.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioEvents.swift; sourceTree = "<group>"; };
 		A0D10E000000000000000002 /* AudioEventsTestable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioEventsTestable.swift; sourceTree = "<group>"; };
 		A0D10E000000000000000003 /* AudioEventsTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioEventsTests.swift; sourceTree = "<group>"; };
+		A0D10E000000000000000004 /* PinnedWindows.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PinnedWindows.swift; sourceTree = "<group>"; };
+		A0D10E000000000000000005 /* PinnedWindowsTestable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PinnedWindowsTestable.swift; sourceTree = "<group>"; };
+		A0D10E000000000000000006 /* PinnedWindowsTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PinnedWindowsTests.swift; sourceTree = "<group>"; };
 		02540420CE27E6C973652426 /* menubar-0.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = "menubar-0.pdf"; sourceTree = "<group>"; };
 		126D5AA615CEE89F73C22DA7 /* menubar-1.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = "menubar-1.pdf"; sourceTree = "<group>"; };
 		1C961003A0D16B9AE3932B3F /* thumbnails_show_colored_circles_light@2x.heic */ = {isa = PBXFileReference; lastKnownFileType = image.heic; path = "thumbnails_show_colored_circles_light@2x.heic"; sourceTree = "<group>"; };
@@ -1229,6 +1236,9 @@
 				5F117E41000000000000F001 /* PhantomWindowDetector.swift */,
 				5E7C0F70000000000000E001 /* ExceptionMatcher.swift */,
 				5E0DE2A0000000000000D001 /* WindowOrderResolver.swift */,
+				A0D10E000000000000000004 /* PinnedWindows.swift */,
+				A0D10E000000000000000005 /* PinnedWindowsTestable.swift */,
+				A0D10E000000000000000006 /* PinnedWindowsTests.swift */,
 				5E7AB00000000000000D2001 /* TabGroupResolver.swift */,
 				5E7AB00000000000000D2101 /* TabGroupResolverTests.swift */,
 				5EC0DE00000000000000A101 /* RealWorldScenariosTests.swift */,
@@ -2146,6 +2156,8 @@
 			files = (
 				A0D10E000000000000000013 /* AudioEventsTestable.swift in Sources */,
 				A0D10E000000000000000014 /* AudioEventsTests.swift in Sources */,
+				A0D10E000000000000000017 /* PinnedWindowsTestable.swift in Sources */,
+				A0D10E000000000000000018 /* PinnedWindowsTests.swift in Sources */,
 				10F5AECE239ADA681CF68695 /* SearchDiscoveryShortcut.swift in Sources */,
 				389D13E4E7FFA467D5BC68D8 /* SearchDiscoveryPolicy.swift in Sources */,
 				31F45195947F044608CC5D8A /* SearchDiscoveryPanel.swift in Sources */,
@@ -2308,6 +2320,8 @@
 			files = (
 				A0D10E000000000000000011 /* AudioEvents.swift in Sources */,
 				A0D10E000000000000000012 /* AudioEventsTestable.swift in Sources */,
+				A0D10E000000000000000015 /* PinnedWindows.swift in Sources */,
+				A0D10E000000000000000016 /* PinnedWindowsTestable.swift in Sources */,
 				C966F89BC7C0D1E5F7C9B26E /* SearchDiscoveryShortcut.swift in Sources */,
 				254094A701BAF49F701F7EFF /* SearchDiscoveryPolicy.swift in Sources */,
 				E7DC5BA37EF80DD2802D96BD /* SearchDiscoveryPanel.swift in Sources */,

@@ -30,6 +30,8 @@ enum ShortcutActions {
         ShortcutAction(id: "toggleFullscreenWindowShortcut", perform: { onSelectedWindow { $0.toggleFullscreen() } }),
         ShortcutAction(id: "quitAppShortcut", perform: { onSelectedWindow { $0.application.quit() } }),
         ShortcutAction(id: "hideShowAppShortcut", perform: { onSelectedWindow { $0.application.hideOrShow() } }),
+        // fork-local: see PinnedWindows
+        ShortcutAction(id: "pinWindowShortcut", perform: { onSelectedWindow { PinnedWindows.toggle($0) } }),
         ShortcutAction(id: "searchShortcut", perform: {
             guard SwitcherSession.isActive else { return }
             TilesView.toggleSearchModeFromShortcut()

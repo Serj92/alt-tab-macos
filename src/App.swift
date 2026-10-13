@@ -466,6 +466,7 @@ class App: NSApplication {
         let prioritizedIds = TilesView.windowIdsInViewport()
         WindowThumbnails.refreshAsync(Windows.list, .refreshOnlyThumbnailsAfterShowUi, prioritizedIds: prioritizedIds)
         AudioEvents.switcherShown() // fork-local: playing-audio status icon
+        PinnedWindows.forgetClosedWindows() // fork-local: pinned windows
     }
 
     static func checkIfShortcutsShouldBeDisabled(_ activeWindow: Window?, _ activeApp: Application?) {

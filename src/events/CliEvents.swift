@@ -182,6 +182,12 @@ class CliServer {
             Logger.info { "QAMARK \(mark)" }
             return noOutput
         }
+        // fork-local: pins or unpins a window the way the P key does, without a keystroke (PinnedWindows)
+        if rawValue.hasPrefix("--qa-pin="), let wid = CGWindowID(rawValue.dropFirst("--qa-pin=".count)),
+           let window = Windows.byWindowId[wid] {
+            PinnedWindows.toggle(window)
+            return noOutput
+        }
         #endif
         if rawValue.hasPrefix("--focus="),
            let id = CGWindowID(rawValue.dropFirst("--focus=".count)), let window = (Windows.list.first { $0.cgWindowId == id }) {
@@ -332,6 +338,7 @@ class CliServer {
                 app: window.application.runningApplication.localizedName,
                 minimizedIcon: icons[StatusIconsView.minimizedIdx].visible,
                 audioIcon: icons[StatusIconsView.audioIdx].visible,
+                pinBadge: !view.pinBadge.isHidden,
                 fullscreenIcon: icons[StatusIconsView.fullscreenIdx].visible,
                 appHiddenIcon: icons[StatusIconsView.hiddenIdx].visible,
                 spaceIcon: icons[StatusIconsView.spaceIdx].visible,
@@ -438,6 +445,8 @@ class CliServer {
         var minimizedIcon: Bool
         // fork-local: see AudioEvents
         var audioIcon: Bool
+        // fork-local: see PinnedWindows
+        var pinBadge: Bool
         var fullscreenIcon: Bool
         var appHiddenIcon: Bool
         var spaceIcon: Bool
@@ -571,7 +580,7 @@ class CliClient {
     static func detectCommand() -> String? {
         let args = CommandLine.arguments
         if args.count == 2 && !args[1].starts(with: "--logs=") {
-            if args[1] == "--list" || args[1] == "--detailed-list" || args[1] == "--qa-state" || args[1] == "--qa-telemetry" || args[1] == "--hide" || args[1].hasPrefix("--qa-mark=") || args[1].hasPrefix("--focus=") || args[1].hasPrefix("--focusUsingLastFocusOrder=") || args[1].hasPrefix("--show=") {
+            if args[1] == "--list" || args[1] == "--detailed-list" || args[1] == "--qa-state" || args[1] == "--qa-telemetry" || args[1] == "--hide" || args[1].hasPrefix("--qa-mark=") || args[1].hasPrefix("--qa-pin=") || args[1].hasPrefix("--focus=") || args[1].hasPrefix("--focusUsingLastFocusOrder=") || args[1].hasPrefix("--show=") {
                 return args[1]
             }
         }

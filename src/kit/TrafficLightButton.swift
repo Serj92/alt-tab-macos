@@ -22,6 +22,14 @@ class TrafficLightButton: NSButton {
     }
 
     @objc func onClick() {
+        if type == .pin, let window_ {
+            PinnedWindows.toggle(window_)
+            // the window jumps to its new tile, so the controls here no longer belong to the window under the
+            // pointer; the next pointer move shows the right ones
+            TilesView.thumbnailOverView.hideWindowControls()
+            TilesView.thumbnailOverView.previousTarget = nil
+            return
+        }
         if (type == .fullscreen) {
             window_?.toggleFullscreen()
         } else if (type == .miniaturize) {
@@ -34,9 +42,54 @@ class TrafficLightButton: NSButton {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        guard type != .pin else { return drawPin() }
         let (diskBackgroundColor, diskStrokeColor, symbolColor) = colors()
         let disk = drawDisk(diskBackgroundColor, diskStrokeColor)
         drawSymbol(symbolColor)
+        drawDimming(disk)
+    }
+
+    /// fork-local: where the pin button sits on a thumbnail, alone in its top-right corner. Shared by the hover
+    /// controls and the tile's own pinned badge, which the hover button must cover exactly.
+    static func pinOrigin(thumbnail: CGRect) -> NSPoint {
+        NSPoint(x: thumbnail.maxX - 3 - size, y: thumbnail.minY + 2)
+    }
+
+    private static let pinFill = NSColor(srgbRed: 0.663, green: 0.545, blue: 0.961, alpha: 1)
+    private static let pinStroke = NSColor(srgbRed: 0.518, green: 0.400, blue: 0.839, alpha: 1)
+    private static let pinInk = NSColor(srgbRed: 0.133, green: 0.063, blue: 0.290, alpha: 1)
+    private static let pinnedSymbol = pinSymbol("pin.fill", pinInk)
+    private static let unpinnedSymbol = pinSymbol("pin", pinFill)
+
+    private static func pinSymbol(_ name: String, _ color: NSColor) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8.5, weight: .semibold)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [color])))
+    }
+
+    /// fork-local: lilac, picked by the owner from mockups. Pinned: a filled disk with a dark pin, like its
+    /// neighbours. Not pinned (shown under the pointer only): a ring with an outline pin, so the two states
+    /// read apart at a glance.
+    private func drawPin() {
+        let pinned = window_?.isPinned ?? false
+        let disk = NSBezierPath(ovalIn: bounds.insetBy(dx: pinned ? 0.5 : 0.75, dy: pinned ? 0.5 : 0.75))
+        if pinned {
+            Self.pinFill.setFill()
+            disk.fill()
+            Self.pinStroke.setStroke()
+            disk.lineWidth = 0.5
+        } else {
+            NSColor.black.withAlphaComponent(0.55).setFill()
+            disk.fill()
+            Self.pinFill.setStroke()
+            disk.lineWidth = 1.25
+        }
+        disk.stroke()
+        if let symbol = pinned ? Self.pinnedSymbol : Self.unpinnedSymbol {
+            let s = symbol.size
+            symbol.draw(in: NSRect(x: bounds.midX - s.width / 2, y: bounds.midY - s.height / 2, width: s.width, height: s.height),
+                from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
         drawDimming(disk)
     }
 
@@ -184,6 +237,8 @@ enum TrafficLightButtonType {
     case close
     case miniaturize
     case fullscreen
+    /// fork-local: see `PinnedWindows`
+    case pin
 }
 
 // experiment: use actual buttons from OS through standardWindowButton

@@ -202,6 +202,7 @@ class ControlsTab {
         "toggleFullscreenWindowShortcut": ATShortcut(Shortcut(keyEquivalent: "f")!, "toggleFullscreenWindowShortcut", .local, .down),
         "quitAppShortcut": ATShortcut(Shortcut(keyEquivalent: "q")!, "quitAppShortcut", .local, .down),
         "hideShowAppShortcut": ATShortcut(Shortcut(keyEquivalent: "h")!, "hideShowAppShortcut", .local, .down),
+        "pinWindowShortcut": ATShortcut(Shortcut(keyEquivalent: "p")!, "pinWindowShortcut", .local, .down),
     ]
     static var shortcuts = defaultShortcuts
 

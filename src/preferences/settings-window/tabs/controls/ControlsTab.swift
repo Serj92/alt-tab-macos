@@ -51,6 +51,7 @@ class ControlsTab {
     private static let staticManagedShortcutPreferences = [
         "focusWindowShortcut", "previousWindowShortcut", "cancelShortcut", "searchShortcut",
         "closeWindowShortcut", "minDeminWindowShortcut", "toggleFullscreenWindowShortcut", "quitAppShortcut", "hideShowAppShortcut",
+        "pinWindowShortcut",
     ]
     /// Canonical id → localized label for the always-active ("when active") shortcuts. Single source
     /// of truth: `ShortcutsWhenActiveSheet` reads its row titles from here, and `conflictLabel(_:)`
@@ -65,6 +66,7 @@ class ControlsTab {
         "toggleFullscreenWindowShortcut": NSLocalizedString("Fullscreen/Defullscreen window", comment: ""),
         "quitAppShortcut": NSLocalizedString("Quit app", comment: ""),
         "hideShowAppShortcut": NSLocalizedString("Hide/Show app", comment: ""),
+        "pinWindowShortcut": NSLocalizedString("Pin/Unpin window", comment: ""),
     ]
     private static let removableShortcutPreferences = [
         "holdShortcut", "nextWindowShortcut",

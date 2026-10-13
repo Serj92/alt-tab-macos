@@ -18,6 +18,9 @@ struct OrderWindow: Equatable {
     let app: ApplicationState
     let searchMatches: Bool       // Search.matches (only meaningful when search is active)
     let searchRelevance: Double   // Search.relevance
+    /// fork-local: the window's place among the pinned ones (`PinnedWindows`), nil when not pinned or when
+    /// pins do not apply to this list.
+    var pinRank: Int? = nil
 }
 
 struct ApplicationRepresentativeCandidate: Equatable {
@@ -61,6 +64,13 @@ enum WindowOrderResolver {
             if a.searchMatches != b.searchMatches { return a.searchMatches }
             if a.searchRelevance != b.searchRelevance { return a.searchRelevance > b.searchRelevance }
             return a.state.lastFocusOrder < b.state.lastFocusOrder
+        }
+        // fork-local: pinned windows lead, in pin order, ahead of every bucket below
+        switch (a.pinRank, b.pinRank) {
+            case let (ra?, rb?) where ra != rb: return ra < rb
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: break
         }
         // separate buckets for these window types (pushed to the end)
         if windowlessAtEnd && a.state.isWindowlessApp != b.state.isWindowlessApp { return b.state.isWindowlessApp }

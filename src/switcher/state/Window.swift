@@ -53,6 +53,8 @@ class Window {
     var isHidden: Bool { get { application.isHidden } }
     /// fork-local: see `AudioEvents`
     var isPlayingAudio: Bool { application.audio.includes(cgWindowId) }
+    /// fork-local: see `PinnedWindows`
+    var isPinned: Bool { PinnedWindows.rank(cgWindowId) != nil }
     var dockLabel: String? { get { application.dockLabel } }
     var screenId: ScreenUuid?
     var axUiElement: AXUIElement?

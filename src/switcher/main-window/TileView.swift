@@ -13,6 +13,9 @@ class TileView: FlippedView {
     var statusIcons = StatusIconsView()
     var dockLabelIcon = TileFontIconView(badgeSize: TileFontIconView.badgeBaseSize(forIconSize: TileView.iconSize().width))
     var windowlessAppIndicator = WindowlessAppIndicator(tooltip: TileView.noOpenWindowToolTip)
+    /// fork-local: a pinned window's mark, drawn without the pointer over it. Never clicked: the hover
+    /// controls' own pin button covers it exactly whenever the pointer is there (see `PinnedWindows`).
+    var pinBadge = TrafficLightButton(.pin, "")
     private var fullTitle = ""
     private var fullTitleWidth = CGFloat(0)
     private struct TruncationKey: Hashable {
@@ -137,6 +140,10 @@ class TileView: FlippedView {
         addSubviews([label, statusIcons])
         setSubviewAbove(windowlessAppIndicator)
         addSubview(dockLabelIcon)
+        pinBadge.toolTip = nil
+        pinBadge.isEnabled = false
+        pinBadge.isHidden = true
+        addSubview(pinBadge)
         label.fixHeight()
         // Disable implicit CALayer animations on every subview that moves between styles. The
         // `caTransaction { setDisableActions(true) }` in `TilesPanel.updateContents` covers the
@@ -150,6 +157,7 @@ class TileView: FlippedView {
         TileView.disableImplicitLayerAnimations(on: statusIcons)
         TileView.disableImplicitLayerAnimations(on: windowlessAppIndicator)
         TileView.disableImplicitLayerAnimations(on: dockLabelIcon)
+        TileView.disableImplicitLayerAnimations(on: pinBadge)
         applyShadows()
     }
 
@@ -309,6 +317,11 @@ class TileView: FlippedView {
 
     private func updateValues(_ element: Window, _ index: Int) {
         assignIfDifferent(&windowlessAppIndicator.isHidden, !element.isWindowlessApp)
+        // fork-local: shown where the hover controls are, so the badge and the hover button never disagree
+        assignIfDifferent(&pinBadge.isHidden, !(element.isPinned && Appearance.resolvedStyle == .thumbnails
+            && !Preferences.hideColoredCircles && !Appearance.hideThumbnails))
+        pinBadge.window_ = element
+        pinBadge.needsDisplay = true
         statusIcons.update(
             isHidden: element.isHidden && !Preferences.hideStatusIcons,
             isFullscreen: element.isFullscreen && !Preferences.hideStatusIcons,
@@ -589,6 +602,7 @@ class TileView: FlippedView {
             let hHeight = max(appIcon.frame.height, TilesView.layoutCache.labelHeight)
             assignIfDifferent(&thumbnail.frame.origin, NSPoint(x: edgeInsets, y: edgeInsets + hHeight + Appearance.intraCellPadding))
             thumbnail.centerInSuperlayer(x: true)
+            assignIfDifferent(&pinBadge.frame.origin, TrafficLightButton.pinOrigin(thumbnail: thumbnail.frame))
         }
         updateWindowlessAppIndicatorPosition()
         updateDockLabelIconPosition()

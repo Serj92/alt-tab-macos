@@ -14,6 +14,7 @@ class ShortcutsWhenActiveSheet: SheetWindow {
     private static let labelFullscreen = ControlsTab.staticShortcutLabels["toggleFullscreenWindowShortcut"]!
     private static let labelQuit = ControlsTab.staticShortcutLabels["quitAppShortcut"]!
     private static let labelHideShow = ControlsTab.staticShortcutLabels["hideShowAppShortcut"]!
+    private static let labelPin = ControlsTab.staticShortcutLabels["pinWindowShortcut"]!
 
     /// Pre-build search index for the open-button. See `SettingsSearchIndex.sheetSearchableStrings`.
     /// `ProBadgeView.proLabel` contributes the "Pro" tag rendered on the search row.
@@ -21,7 +22,7 @@ class ShortcutsWhenActiveSheet: SheetWindow {
         title,
         labelFocus, labelPrevious, labelCancel,
         labelSearch, labelSearchHint,
-        labelClose, labelMinDemin, labelFullscreen, labelQuit, labelHideShow,
+        labelClose, labelMinDemin, labelFullscreen, labelQuit, labelHideShow, labelPin,
         ProBadgeView.proLabel,
     ]
 
@@ -42,6 +43,8 @@ class ShortcutsWhenActiveSheet: SheetWindow {
             rightViews: [LabelAndControl.makeLabelWithRecorder(Self.labelQuit, "quitAppShortcut", Preferences.quitAppShortcut, labelPosition: .right)[0]])
         let hideShowAppShortcut = TableGroupView.Row(leftTitle: Self.labelHideShow,
             rightViews: [LabelAndControl.makeLabelWithRecorder(Self.labelHideShow, "hideShowAppShortcut", Preferences.hideShowAppShortcut, labelPosition: .right)[0]])
+        let pinWindowShortcut = TableGroupView.Row(leftTitle: Self.labelPin,
+            rightViews: [LabelAndControl.makeLabelWithRecorder(Self.labelPin, "pinWindowShortcut", Preferences.pinWindowShortcut, labelPosition: .right)[0]])
         let table = TableGroupView(title: Self.title, width: SheetWindow.width)
         _ = table.addRow(focusWindowShortcut)
         _ = table.addRow(previousWindowShortcut)
@@ -55,6 +58,7 @@ class ShortcutsWhenActiveSheet: SheetWindow {
         _ = table.addRow(toggleFullscreenWindowShortcut)
         _ = table.addRow(quitAppShortcut)
         _ = table.addRow(hideShowAppShortcut)
+        _ = table.addRow(pinWindowShortcut)
         return table
     }
 
