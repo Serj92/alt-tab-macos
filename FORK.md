@@ -214,6 +214,17 @@ If Auto ever comes back, there are two ways to make it cheap. Only one is worth 
 
 In `MainThreadStall` terms, 25 of 32 scripted summons had every step under 16ms.
 
+**Re-measured at v11.9.2 (2026-10-14)**, after the audio icon and pinned windows, same method (20 cycles
+`--show=0` / `--hide` at 0.6s + 0.9s, 36s trace, 3 runs), 23 windows, Medium. `showUiOrCycleSelection`
+**101-105ms per run, ~5ms per summon**; the main thread 699-725ms per run (not comparable with the 484ms
+above: unknown cadence, ~3× the windows then). Idle unchanged: ~0% CPU, `phys_footprint` 49 MB, 13
+threads. The audio and pin code doesn't register on the main thread (≤1ms per run). What is left is
+AppKit's: CoreAnimation commit 225-268ms, a timer-driven `NSAnimationManager performAnimations` 80-134ms
+(property animations ticking on main for a while after each summon), and `NSViewUpdateVibrancyForSubtree`
+over `NSButtonCell` 34-41ms in the display cycle. **Tried and reverted:** calling `flashScrollers()` in
+`TilesPanel.show` only when the tiles overflow. `performAnimations` stayed at 103-173ms, so the scroller
+flash isn't what animates. Its source is still unattributed (no AltTab frame on those stacks).
+
 ---
 
 ## Measuring performance
