@@ -18,6 +18,8 @@ VERSION=$(grep -m1 -E '^chore\(release\): [0-9]+\.[0-9]+\.[0-9]+' <<< "$SUBJECTS
   | sed -E 's/^chore\(release\): ([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || VERSION="0.0.0"
 
+python3 scripts/assets/compile_illustrations.py --check || exit $?
+
 xcodebuild \
   -project alt-tab-macos.xcodeproj \
   -scheme Debug \

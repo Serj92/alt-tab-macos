@@ -643,7 +643,7 @@ final class ShortcutOverrideSegmented: ShortcutOverrideBinding {
             let stored = CachedUserDefaults.intFromMacroPref(key, cases)
             select(hasOverride ? stored : globalIndex())
             didRender()
-            UpgradeTab.navigateToUpgradeTab()
+            UpgradeTab.navigateToUpgradeTab(for: key.hasPrefix("appearanceSize") ? .autoSize : .search)
             return
         }
         let decision = OverrideClickResolver.decide(
@@ -720,7 +720,7 @@ final class ShortcutOverrideRadios: ShortcutOverrideBinding {
         if proGatedIndices.contains(i) && LicenseManager.shared.isProLocked {
             // Snap back to the stored value.
             select(storedIndex())
-            UpgradeTab.navigateToUpgradeTab()
+            UpgradeTab.navigateToUpgradeTab(for: .styles)
             return
         }
         let decision = OverrideClickResolver.decide(
