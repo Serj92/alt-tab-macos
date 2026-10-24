@@ -183,8 +183,13 @@ Time Profiler on the installed Release build, 20 scripted `--show=0` / `--hide` 
 threads. **Release build settings were already the fast ones:** `-O`, whole-module, ThinLTO, dead-code
 stripping, arm64 only. The only faster setting left is `-Ounchecked`, which removes safety checks,
 so no. Since v11.10.0 Release is `-Osize`, taken from upstream (`7c015173`: binary −16%, measured
-+2% on fuzzy search only). Not re-measured on the summon path here; if a summon ever feels slower,
-a one-line `-O` in `config/release.xcconfig` + the pbxproj Release configs is the A/B to run.
++2% on fuzzy search only). **A/B on the summon path (2026-10-24, v11.10.1, 37 windows, Medium)**: two
+Release builds of the same commit differing only in `SWIFT_OPTIMIZATION_LEVEL`, 3 alternating runs each
+of the method below. `showUiOrCycleSelection` per summon: `-O` 7.8 / 8.4 / 5.6ms, `-Osize` 8.9 / 8.5 /
+6.2ms (≈ +0.6ms, +8%); whole main thread per run +23–44ms out of ~850 (+3–5%). `-Osize` came out
+slower in all three pairs, but the gap is smaller than the spread between runs of one variant, and a
+summon is dominated by CoreAnimation and WindowServer anyway. Kept `-Osize`: no diff against upstream.
+If summon latency is ever chased again, `-O` is a known ~0.6ms.
 
 **The one hot spot was Appearance size Auto.** `App.showUi` took about **14.2ms** of main-thread
 CPU per summon, and `TilesView.resolveAutoSize` about 9ms of that. Auto tries Large, then Medium, then
