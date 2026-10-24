@@ -73,7 +73,7 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | **No event-server read for the Esc tap** | `updateEscapeAbsorptionTap` asked `CGEvent.tapIsEnabled` every time just to compare against the state it wanted. Measured with marks around the two calls separately: the read costs **4–34ms**, the `tapEnable` write **1–7ms**, and once the read blocked the main thread for **246ms** between a dismissal and the next summon. Upstream's audit (`src/main-thread-ipc.md`) had the pair at "0–8ms", which hid it. Nothing but AltTab enables this tap, so the wanted state is now compared against a cached flag; macOS only ever *disables* a tap, and that arrives as `.tapDisabledByUserInput` / `.tapDisabledByTimeout`, so the recovery paths (also wake and unlock) pass `force: true`. `force` only ever re-ENABLES — answering the once-per-dismissal `byUserInput` with another `tapEnable(false)` could re-trigger it. Pattern copied from `TrackpadEvents.setAbsorbTapEnabled`, which already caches the same way | `src/events/KeyboardEvents.swift`, `src/main-thread-ipc.md` |
 | **Colorful app icon** | Upstream's Pro release (`9147a4a8`) replaced the original colorful, no-background icon (overlapping cyan / pink / navy windows) with a white rounded tile, which looked oversized in Launchpad and blurry when rescaled; v11.9.0 replaced it again, with a rabbit. Since v11.9.0 upstream ships the icon as one 1024px `app.png` (`CFBundleIconFile`, and `App.appIcon` for every in-app use), so the fork patch is that one file: `app.png` is `app.iconset/icon_512x512@2x.png` from `9147a4a8^`, byte for byte. The old `app.icns` held only the 512 and 1024 images, so macOS was already scaling every smaller size itself. `app.svg` stays as the vector source. Never re-quantize or rescale the PNG: that is what made the tile blurry. To swap only the installed app's icon, replace `Contents/Resources/app.png` and re-sign the main bundle alone (no `--deep`, no `--options runtime`, no entitlements), so the Keychain license item and the TCC grants survive | `resources/icons/app/` |
 | **Local build version** | derive `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` from the latest `chore(release):` commit (CI injects it normally; local builds recover it from git) | `ai/build.sh` |
-| **Debug-strip** | gate `DebugWindow` (the "Debug tools" window) + its menubar item + `BenchmarkRunner` behind `#if DEBUG` so a **Release** build carries no debug machinery (QAMenu + DebugMenu live-graph were already `#if DEBUG`). Same for the test harness's hooks: the `--qa-*` CLI commands (`--qa-state`, `--qa-telemetry`, `--qa-mark=`, and the `--qa-mute-ax-destroys=` / `--qa-stall-main=` fault injections, plus the mute check on every AX destroy), and `TrackingTelemetryRecorder`, whose only readers are those commands — Release gets an empty stub, which also drops a main-queue hop per recorded AX notification. Release answers `--qa-*` with "Couldn't execute command"; `--list`, `--detailed-list`, `--focus=`, `--show=`, `--hide` are real CLI and stay. For a `--qa-*` measurement, use a Debug build | `App.swift`, `Menubar.swift`, `DebugWindow.swift`, `Benchmark.swift`, `CliEvents.swift`, `AxObserverRegistry.swift`, `TrackingTelemetryRecorder.swift` |
+| **Debug-strip** | gate `DebugWindow` (the "Debug tools" window) + its menubar item + `BenchmarkRunner` behind `#if DEBUG` so a **Release** build carries no debug machinery (QAMenu + DebugMenu live-graph were already `#if DEBUG`). Same for the test harness's hooks: the `--qa-*` CLI commands (`--qa-state`, `--qa-telemetry`, `--qa-mark=`, and the `--qa-mute-ax-destroys=` / `--qa-stall-main=` fault injections, plus the mute check on every AX destroy), and `TrackingTelemetryRecorder`, whose only readers are those commands — Release gets an empty stub, which also drops a main-queue hop per recorded AX notification. Release answers `--qa-*` with "Couldn't execute command"; `--list`, `--detailed-list`, `--focus=`, `--show=`, `--hide` are real CLI and stay. For a `--qa-*` measurement, use a Debug build. **Since v11.10.0 upstream does most of this itself** (`8f444190`: `--qa-*`, fault injections, benchmark launcher, `TrackingTelemetryRecorder` with empty Release bodies), so its versions replaced ours; what is still fork-local is the `DebugWindow` class + its menubar item | `DebugWindow.swift`, `Menubar.swift`, `App.swift` (`showDebugWindow`) |
 | **No auto-update** | Sparkle is removed entirely: the local SwiftPM package, the framework and its `Updater.app`/`Autoupdate` helpers, `SparkleDelegate`, the `UserDefaultsEvents` class (it existed only to mirror Sparkle's own checkbox back into `updatePolicy`), the menubar's "Check for updates…", the Settings updates-policy row, and the feedback window's pre-form update check. The `updatePolicy` preference itself is left defined but unused, to keep `MacroPreferences` / migrations untouched. Bundle 12MB → 9.5MB. The fork could never update itself anyway (nil feed), so nothing is lost — the feedback window shows its form directly instead of after a check that could only ever fail | `App.swift`, `Menubar.swift`, `GeneralTab.swift`, `PreferencesEvents.swift`, `FeedbackWindow.swift`, `Info.plist`, `project.pbxproj` |
 | **No crash reporting** | AppCenter is removed entirely: the local SwiftPM package, the `AppCenter` / `AppCenterCrashes` products, `AppCenterCrash`, the `AppCenterApplication` NSApplication subclass (`NSPrincipalClass` is plain `NSApplication` now), `Secrets` (it held nothing else), the crash-reports queue, and the Settings "Crash reports policy" row. `APPCENTER_SECRET` was defined in no xcconfig, so the shipped `AppCenterSecret` was the empty string and reports could never reach anyone; the service itself is retired (upstream tracks a replacement in #4073). Dropping it also drops the dylibs it dragged in: CrashReporter.framework, CoreTelephony, SystemConfiguration, libsqlite3 and libz, and with the embedded framework gone the `@rpath/libswift*` back-deployment copies collapse onto the OS ones in `/usr/lib/swift` (66 load commands → 43). CoreData survives — it turns out to be an autolink artifact with no undefined symbols against it, so it was never AppCenter's to remove. The `crashPolicy` preference is left defined but unused, to keep `MacroPreferences` / migrations untouched. **Behaviour change:** `AppCenterCrash` registered `NSApplicationCrashOnExceptions`, so an exception raised inside `sendEvent:` killed the app *so it could be reported*; with no reporter that trade buys nothing, and stock AppKit handling (log and carry on) applies again | `App.swift`, `Info.plist`, `alt-tab-macos-Bridging-Header.h`, `GeneralTab.swift`, `BackgroundWork.swift`, `project.pbxproj` |
 | **No "move to /Applications" prompt** | `MoveToApplicationsFolder.promptIfNeeded()` is no longer called. `ai/install.sh` always installs to /Applications, so the prompt can only fire on a build launched from somewhere else — a probe build for an A/B measurement — where accepting it relocates the very binary being measured. It also ran a modal alert at the earliest point of launch, which forced upstream to order it ahead of the WindowServer tap so a queued discovery could not drain re-entrantly into a half-built model; not calling it drops that constraint. The type is left in the tree, uncalled | `src/App.swift` |
@@ -180,9 +180,11 @@ Time Profiler on the installed Release build, 20 scripted `--show=0` / `--hide` 
 [Measuring performance](#measuring-performance)).
 
 **Idle is already as low as it goes:** ~0% CPU, about 1 wakeup/s, `phys_footprint` 49 MB, 9-17
-threads. **Release build settings are already the fast ones:** `-O`, whole-module, ThinLTO, dead-code
+threads. **Release build settings were already the fast ones:** `-O`, whole-module, ThinLTO, dead-code
 stripping, arm64 only. The only faster setting left is `-Ounchecked`, which removes safety checks,
-so no.
+so no. Since v11.10.0 Release is `-Osize`, taken from upstream (`7c015173`: binary −16%, measured
++2% on fuzzy search only). Not re-measured on the summon path here; if a summon ever feels slower,
+a one-line `-O` in `config/release.xcconfig` + the pbxproj Release configs is the A/B to run.
 
 **The one hot spot was Appearance size Auto.** `App.showUi` took about **14.2ms** of main-thread
 CPU per summon, and `TilesView.resolveAutoSize` about 9ms of that. Auto tries Large, then Medium, then
@@ -283,7 +285,7 @@ local patches above, these are **temporary**: when upstream merges one, the next
 #5967 arrived with the v11.6.1 merge as `a694953c` (amended, plus a test for the other
 containment direction in `chordsCollide`); our copy was dropped there. #5932 is a cherry-pick, so
 it keeps its original author; upstream's own merge of it will not be recognised as a duplicate by
-git. Still open at v11.9.2 (2026-10-14). Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --json state,mergedAt`.
+git. Still open at v11.10.1 (2026-10-24). Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --json state,mergedAt`.
 
 ### Considered, not taken (2026-09-18)
 
@@ -411,7 +413,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **1537 tests, 0 failures**
+### Expected: **1623 tests, 0 failures**
 
 Any failure is a real regression. Nothing here is "expected to be red".
 
@@ -452,6 +454,16 @@ neighbours in `App.swift`, `PreferencesEvents` and `BackgroundWork`, and `Permis
 which upstream rewrote around the fork's one dropped trailing comma.
 v11.9.2 (with v11.9.1) had 1: a modify/delete on `SparkleDelegate.swift` (upstream added a `day=`
 parameter to the update check; the file stays deleted).
+v11.10.1 (with v11.10.0) had 11, mostly because upstream's `8f444190` did the fork's Debug-strip its
+own way (`CliEvents`, `AxObserverRegistry`, `TrackingTelemetryRecorder`: upstream's versions taken,
+only `--qa-pin=` kept), plus the Sparkle update check in `FeedbackWindow` and both sides adding a
+migration. One break the merge could not see: upstream's new `area` argument was missing from the
+fork's Xcode 16 `captureSampleBuffer` branch in `WindowCaptureEvents`.
+**`ai/test.sh` now starts with upstream's l10n validator** (`validate_localizations.py`): every
+language must hold exactly the keys the code extracts. A fork string added or removed fails it
+before any test runs. Fix with `/translate-missing-l10n`; its apply step also prunes removed keys.
+`npx ts-node` crashes under Node 24, so run that step as
+`node --experimental-strip-types scripts/l10n/apply_translations.ts <batch.json>`.
 Resolve by intent: keep the fork's removal, take upstream's fix around it. Record each resolution in
 the merge commit's body, as the earlier merges do.
 
@@ -498,4 +510,4 @@ only when `config/local.xcconfig` is missing — recreate it (see above).
 
 ---
 
-*Last synced to upstream: **v11.9.2** (2026-10-14).*
+*Last synced to upstream: **v11.10.1** (2026-10-24).*
