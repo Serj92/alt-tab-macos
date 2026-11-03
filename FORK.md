@@ -286,11 +286,22 @@ local patches above, these are **temporary**: when upstream merges one, the next
 | PR | What | Files | Notes |
 |---|---|---|---|
 | [#5932](https://github.com/lwouis/alt-tab-macos/pull/5932) | New **XS** and **XL** appearance sizes (all 3 styles), with a preferences migration for the shifted stored indexes | `MacroPreferences.swift`, `Appearance.swift`, `PreferencesMigrations.swift`, `AppearanceTab.swift`, `LabelAndControl.swift`, `TileView.swift`, +6 | One conflict in `TileView.swift`: the PR predates upstream's `Appearance.resolvedStyle` cache, so it still called `Preferences.effectiveAppearanceStyle(…)`. Resolved to our `resolvedStyle` + the PR's `resolvedSize.isLargeOrAbove`. Its migration also needed a fork-local fix to run at all (see **Fork-safe XS/XL migration** above). At v11.7.0 upstream deleted `LabelAndControl.applySystemSelectedSegmentStyle` (it only set the default `.automatic`), so the PR's `naturalSegmentWidth` probe no longer calls it. +5 tests, +2 fork tests |
+| [#6155](https://github.com/lwouis/alt-tab-macos/pull/6155) | The colored thumbnail buttons close the gap a hidden one leaves (Finder's quit; windows that can't be closed or minimized) instead of sitting one slot away from the corner | `TileOverView.swift` | Taken 2026-11-03. One conflict, with the pin button in `showWindowControls`: the pin's hide rule (no window number) moved into the PR's `updateVisibility`, its top-right placement stays in `layoutVisibleButtons`, and the left row skips it by identity, since being hidden no longer filters it out. No tests in the PR |
 
 #5967 arrived with the v11.6.1 merge as `a694953c` (amended, plus a test for the other
 containment direction in `chordsCollide`); our copy was dropped there. #5932 is a cherry-pick, so
 it keeps its original author; upstream's own merge of it will not be recognised as a duplicate by
-git. Still open at v11.10.1 (2026-10-24). Check its state at each merge: `gh pr view 5932 -R lwouis/alt-tab-macos --json state,mergedAt`.
+git. Still open at v11.10.1 (2026-10-24). Check each one's state at each merge: `gh pr view <number> -R lwouis/alt-tab-macos --json state,mergedAt`.
+
+### Considered, not taken (2026-11-03)
+
+Upstream `master` had nothing past v11.10.1. Open PRs reviewed alongside #6155:
+
+| PR | What | Why not |
+|---|---|---|
+| [#6150](https://github.com/lwouis/alt-tab-macos/pull/6150) | mouse stays uncaptured in Minecraft / SDL games after switching | niche, and it changes the shared focus path: every focus would post a mouse-up after the mouse-down |
+| [#6149](https://github.com/lwouis/alt-tab-macos/pull/6149) | Stage Manager skews thumbnails | +778 lines; only matters with Stage Manager on |
+| [#6120](https://github.com/lwouis/alt-tab-macos/pull/6120) | group windows by screen, fold the other screens into one tile | a feature over 18 files, through `WindowOrderResolver` / `SelectionResolver`, which the pinned-windows patch also hooks |
 
 ### Considered, not taken (2026-09-18)
 
