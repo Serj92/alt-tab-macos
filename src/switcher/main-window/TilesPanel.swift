@@ -205,8 +205,13 @@ class TilesPanel: NSPanel {
         let (w, h) = NSScreen.screens.reduce((CGFloat.zero, CGFloat.zero)) { acc, screen in
             // in Thumbnails Appearance, AppIcons can be used for windowless apps, thus much bigger than the app icon near the title
             if Preferences.effectiveAppearanceStyle(SwitcherSession.activeShortcutIndex) == .thumbnails {
-                return (max(acc.0, TileView.maxThumbnailWidth(screen) * screen.backingScaleFactor),
-                    max(acc.1, TileView.maxThumbnailHeight(screen) * screen.backingScaleFactor))
+                // fork-local: the icon is square and drawn to fit the thumbnail box, so its side never exceeds
+                // the box's shorter one. Upstream sizes it to the TILE's longer side: 671px against the 330px
+                // ever drawn (Medium, 2048x1152pt at 2x), 1.76 MB per app plus CoreAnimation's own 1.82 MB
+                // copy of each icon shown. Measured after two summons over 10 apps: footprint 65-73 MB -> 37 MB.
+                let box = TileView.maxThumbnailContentSize(screen)
+                let side = max(min(box.width, box.height), TileView.iconSize(screen).width) * screen.backingScaleFactor
+                return (max(acc.0, side), max(acc.1, side))
             } else {
                 let size = TileView.iconSize(screen)
                 return (max(acc.0, size.width * screen.backingScaleFactor),

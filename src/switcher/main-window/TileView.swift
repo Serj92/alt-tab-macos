@@ -738,16 +738,20 @@ class TileView: FlippedView {
         return ((TilesPanel.maxThumbnailsHeight(screen) - Appearance.interCellPadding) / Appearance.rowsCount - Appearance.interCellPadding).rounded()
     }
 
+    /// fork-local: the box a thumbnail is drawn in, inside its tile. One definition, because the app-icon
+    /// bitmap is sized from it too (`TilesPanel.updateMaxPossibleAppIconSize`).
+    static func maxThumbnailContentSize(_ screen: NSScreen = NSScreen.preferred) -> NSSize {
+        NSSize(width: TileView.maxThumbnailWidth(screen) - Appearance.edgeInsetsSize * 2,
+            height: TileView.maxThumbnailHeight(screen) - Appearance.edgeInsetsSize * 2 - Appearance.intraCellPadding - Appearance.iconSize)
+    }
+
     static func thumbnailSize(_ imageSize: NSSize?, _ isWindowlessApp: Bool) -> NSSize {
         guard let imageSize else { return NSSize(width: 0, height: 0) }
         let imageWidth = imageSize.width
         let imageHeight = imageSize.height
-        let thumbnailHeightMax = TileView.maxThumbnailHeight()
-            - Appearance.edgeInsetsSize * 2
-            - Appearance.intraCellPadding
-            - Appearance.iconSize
-        let thumbnailWidthMax = TileView.maxThumbnailWidth()
-            - Appearance.edgeInsetsSize * 2
+        let box = TileView.maxThumbnailContentSize()
+        let thumbnailHeightMax = box.height
+        let thumbnailWidthMax = box.width
         // don't stretch very small windows; keep them 1:1 in the switcher
         if !isWindowlessApp && imageWidth < thumbnailWidthMax && imageHeight < thumbnailHeightMax {
             return imageSize
