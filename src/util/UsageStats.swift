@@ -14,7 +14,12 @@ struct UsageStats {
     /// A summon burst (hold-to-cycle) records repeatedly; coalescing costs at most this much unflushed data
     /// if the app is killed rather than quit, which for usage counters is a better trade than one full array
     /// write per summon. `flushNow` covers the normal quit.
-    private static let flushDelay: TimeInterval = 2
+    ///
+    /// fork-local: 10 minutes, where upstream waits 2s. `defaults.set` sends the WHOLE array to cfprefsd,
+    /// which rewrites the whole plist. Measured with 69,643 `triggers` timestamps (175 days at ~300 summons
+    /// a day): 95ms on `writeQueue` per flush, ~50ms of cfprefsd CPU and a 677 KB file, after nearly every
+    /// summon. The array keeps a year of them, so all three grow.
+    private static let flushDelay: TimeInterval = 600
     private(set) static var searchRecordedThisSession = false
 
     /// `writeQueue`-owned. Nil value = not loaded from `UserDefaults` yet.
