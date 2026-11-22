@@ -15,6 +15,9 @@ struct CGSWindowCaptureOptions: OptionSet {
     let rawValue: UInt32
     static let ignoreGlobalClipShape = CGSWindowCaptureOptions(rawValue: 1 << 11)
     static let bestResolution = CGSWindowCaptureOptions(rawValue: 1 << 8)
+    // fork-local: one pixel per point, so a quarter of `bestResolution`'s pixels on a 2x display. Measured on
+    // macOS 15.8: a 2048x1068pt window comes back 2048x1068 instead of 4096x2136
+    static let nominalResolution = CGSWindowCaptureOptions(rawValue: 1 << 9)
     // when Stage Manager is enabled, screenshots can become skewed. This param gets us full-size screenshots regardless
     static let fullSize = CGSWindowCaptureOptions(rawValue: 1 << 19)
 }

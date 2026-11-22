@@ -181,8 +181,9 @@ enum WindowThumbnails {
     /// Fetch just-in-time full-resolution Preview frames for the selected window and its ±2 cycling
     /// neighbors (so quick Tab presses land on a sharp Preview). Frames go to the session's capped cache,
     /// not `Window.thumbnail`, and die with the session. Called on show and on every selection move; the
-    /// cache and the per-wid throttler keep re-requests cheap. No-op below macOS 26, where
-    /// CGSHWCaptureWindowList always captures full-size, so `Window.thumbnail` is already sharp.
+    /// cache and the per-wid throttler keep re-requests cheap. No-op below macOS 26, where a shortcut using
+    /// Preview keeps every CGSHWCaptureWindowList capture full-size (`CaptureResolution`), so
+    /// `Window.thumbnail` is already sharp.
     static func fetchPreviewFrames() {
         guard #available(macOS 26.0, *), let session = SwitcherSession.current,
               ScreenRecordingPermission.status == .granted, !ScreenLockEvents.isScreenLocked,

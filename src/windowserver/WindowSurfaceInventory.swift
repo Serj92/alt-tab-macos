@@ -81,6 +81,23 @@ enum CaptureArea {
     }
 }
 
+/// fork-local: whether `CGSHWCaptureWindowList` may capture a window at one pixel per point.
+///
+/// A capture is an IOSurface the WindowServer owns for as long as the thumbnail lives. Measured on macOS
+/// 15.8, ~50 windows on a 4096x2304 display at 2x: one summon grew the WindowServer's footprint by 2.07 GB
+/// at `bestResolution` and by 0.5 GB at `nominalResolution`.
+///
+/// A tile scales the window to fit the thumbnail box. A 1x capture has as many pixels as the window has
+/// points, so once either side in points reaches the box's side in pixels the tile only ever shrinks it.
+/// A smaller window is drawn up to 1:1 in points, which on a 2x display needs the 2x capture. Preview
+/// draws the stored thumbnail at the window's full size, so any shortcut using it keeps 2x for all.
+enum CaptureResolution {
+    static func nominalSuffices(_ windowSize: CGSize?, maxThumbnailPixels: CGSize, previewInUse: Bool) -> Bool {
+        guard !previewInUse, let windowSize, maxThumbnailPixels.width > 0, maxThumbnailPixels.height > 0 else { return false }
+        return windowSize.width >= maxThumbnailPixels.width || windowSize.height >= maxThumbnailPixels.height
+    }
+}
+
 /// Main-thread inventory of every WindowServer surface from the latest all-Space snapshot. Keeping this
 /// separate from `Windows.byWindowId` is essential: a physical background-tab row is not yet a tracked
 /// switch destination and must not prevent inactive-tab AX adoption from looking for it.

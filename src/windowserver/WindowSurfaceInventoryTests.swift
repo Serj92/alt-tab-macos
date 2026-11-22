@@ -187,4 +187,29 @@ final class WindowSurfaceInventoryTests: XCTestCase {
         let cycleB = surface(7, CGRect(x: 146, y: 150, width: 389, height: 500), parent: 6)
         XCTAssertEqual(CaptureArea.bounds(textEditFrame, 1, 7, [foreign, childOfForeign, cycleA, cycleB]), textEditFrame)
     }
+
+    /// 671x440 is the measured thumbnail box: Medium size on a 2048x1152pt display at 2x.
+    private let thumbnailBox = CGSize(width: 671, height: 440)
+
+    func testWindowTheTileOnlyShrinksIsCapturedAtOnePixelPerPoint() {
+        XCTAssertTrue(CaptureResolution.nominalSuffices(CGSize(width: 2048, height: 1068), maxThumbnailPixels: thumbnailBox, previewInUse: false))
+    }
+
+    func testOneSideReachingTheBoxIsEnough() {
+        XCTAssertTrue(CaptureResolution.nominalSuffices(CGSize(width: 327, height: 483), maxThumbnailPixels: thumbnailBox, previewInUse: false))
+        XCTAssertTrue(CaptureResolution.nominalSuffices(CGSize(width: 920, height: 200), maxThumbnailPixels: thumbnailBox, previewInUse: false))
+    }
+
+    func testWindowSmallerThanTheBoxKeepsFullResolution() {
+        XCTAssertFalse(CaptureResolution.nominalSuffices(CGSize(width: 670, height: 439), maxThumbnailPixels: thumbnailBox, previewInUse: false))
+    }
+
+    func testPreviewKeepsFullResolutionForEveryWindow() {
+        XCTAssertFalse(CaptureResolution.nominalSuffices(CGSize(width: 2048, height: 1068), maxThumbnailPixels: thumbnailBox, previewInUse: true))
+    }
+
+    func testUnknownWindowSizeOrBoxKeepsFullResolution() {
+        XCTAssertFalse(CaptureResolution.nominalSuffices(nil, maxThumbnailPixels: thumbnailBox, previewInUse: false))
+        XCTAssertFalse(CaptureResolution.nominalSuffices(CGSize(width: 2048, height: 1068), maxThumbnailPixels: .zero, previewInUse: false))
+    }
 }

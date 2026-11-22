@@ -25,6 +25,31 @@ Two public one-shot APIs exist, each broken differently:
 Routing: `captureScreenshot` for every non-fullscreen window, including full-resolution Preview frames.
 Fullscreen windows use `captureSampleBuffer` because the screenshot API fails when their Space is inactive.
 
+## Capture resolution below macOS 26 (fork-local)
+
+`CGSHWCaptureWindowList` captures at one pixel per point (`nominalResolution`) or at the display's scale
+(`bestResolution`); nothing in between. The capture is an IOSurface the WindowServer owns until the
+thumbnail is replaced, so its size is the WindowServer's memory, not AltTab's.
+
+Measured on macOS 15.8, ~50 windows, 4096x2304 display at 2x, one summon held open 7s, WindowServer
+footprint from `top -l 1 -pid $(pgrep -x WindowServer) -stats mem`:
+
+| Captures | Before summon | After summon | Growth |
+|---|---|---|---|
+| `bestResolution` for all | 3.42 GB | 5.50-5.56 GB | +2.07 GB (two runs) |
+| `nominalResolution` for all | 3.42 GB | 3.94 GB | +0.5 GB |
+
+Capture latency is the same either way: median 73ms at 1x against 65ms at 2x over 121 back-to-back pairs.
+
+`CaptureResolution.nominalSuffices` picks per window:
+
+- **1x** when either side of the window in points reaches that side of the largest thumbnail box in pixels
+  (`TilesPanel.maxPossibleThumbnailSize`). The tile then only shrinks the capture.
+- **2x** for a smaller window. The tile draws it up to 1:1 in points, which a 1x capture would upscale.
+- **2x for every window** while any shortcut uses Preview, which draws the stored thumbnail at the
+  window's full size.
+- **2x** when the window's size or the box is not known yet.
+
 ## Work bounds
 
 - Only one `SCShareableContent` refresh is in flight. Requests arriving while it runs are deduplicated by

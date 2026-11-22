@@ -309,12 +309,16 @@ class WindowCaptureScreenshotsPrivateApi {
             let bPri = b.cgWindowId.map { prioritized.contains($0) } ?? false
             return aPri && !bPri
         }
+        // fork-local: read on main, where `Window.size` and the preferences live (see `CaptureResolution`)
+        let maxThumbnailPixels = TilesPanel.maxPossibleThumbnailSize
+        let previewInUse = Preferences.anyShortcutUsesPreview
         for window in sorted {
             guard let wid = window.cgWindowId else { continue }
             let isPrioritized = prioritized.contains(wid)
+            let nominal = CaptureResolution.nominalSuffices(window.size, maxThumbnailPixels: maxThumbnailPixels, previewInUse: previewInUse)
             Applications.screenshotThrottler.throttleOrProceed(key: "capture-wid-\(wid)", queue: BackgroundWork.screenshotsQueue, priority: isPrioritized ? .high : .normal) { [weak window] in
                 guard source != .refreshOnlyThumbnailsAfterShowUi || SwitcherSession.isActive else { return }
-                guard let wid = window?.cgWindowId, let cgImage = oneTimeCapture(wid) else { return }
+                guard let wid = window?.cgWindowId, let cgImage = oneTimeCapture(wid, nominal) else { return }
                 guard source != .refreshOnlyThumbnailsAfterShowUi || SwitcherSession.isActive else { return }
                 DispatchQueue.main.async { [weak window] in
                     guard source != .refreshOnlyThumbnailsAfterShowUi || SwitcherSession.isActive else { return }
@@ -324,7 +328,7 @@ class WindowCaptureScreenshotsPrivateApi {
         }
     }
 
-    private static func oneTimeCapture(_ wid: CGWindowID) -> CGImage? {
+    private static func oneTimeCapture(_ wid: CGWindowID, _ nominalResolution: Bool) -> CGImage? {
         guard !ActiveWindowCaptures.isTerminating, !ScreenLockEvents.isScreenLocked else { return nil }
         // we use CGSHWCaptureWindowList because it can screenshot minimized windows, which CGWindowListCreateImage can't
         var windowId_ = wid
@@ -333,7 +337,7 @@ class WindowCaptureScreenshotsPrivateApi {
         var list = [CGImage]()
         ActiveWindowCaptures.runSync {
             guard !ActiveWindowCaptures.isTerminating, !ScreenLockEvents.isScreenLocked else { return }
-            list = CGSHWCaptureWindowList(CGS_CONNECTION, &windowId_, 1, [.ignoreGlobalClipShape, .bestResolution, .fullSize]).takeRetainedValue() as! [CGImage]
+            list = CGSHWCaptureWindowList(CGS_CONNECTION, &windowId_, 1, [.ignoreGlobalClipShape, nominalResolution ? .nominalResolution : .bestResolution, .fullSize]).takeRetainedValue() as! [CGImage]
         }
         return list.first
     }
