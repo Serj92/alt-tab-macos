@@ -80,6 +80,9 @@ Each is a `local: …` commit on `master`. Keep them across merges.
 | **Playing-audio status icon** | A speaker icon (`speaker.wave.2.circle.fill`, white on a green disk, the only colored status icon, picked by the owner from mockups; tooltip "Playing audio") among a tile's status icons when its window plays audio; hidden by **Hide status icons**. Upstream closed the request as impossible (#2638, "no public API"); CoreAudio has listed per-process output since macOS 14.2, with no permission. The sounding process is mapped to its app through its parent chain (`sysctl`: `proc_pidinfo` fails on Terminal's root-owned `login`). The window is known only where the app says it: Chromium's tab-button AX titles carry `- Audio playing` (Brave, Helium; English UI only), so only those windows get the icon; any other app marks all its windows. A read that proves nothing (no AX element yet, as right after launch) keeps the previous answer, which is what stopped all 43 Brave tiles lighting up at once. Event-driven plus one re-read per summon, after the visible work, on the AX scan lane; ~100ms of AX calls for 44 Brave windows, only while Brave plays. The icon is an `NSImage(systemSymbolName:)`: the bundled SF Pro subset has no speaker glyph and regenerating it needs SF Symbols.app. Full rules, decision table and measurements: `src/events/AudioEventsSpecs.md`. +15 tests | `src/events/AudioEvents.swift`, `AudioEventsTestable.swift`, `AudioEventsTests.swift`, `AudioEventsSpecs.md` (all new); one or two lines each in `App.swift`, `Application.swift`, `Window.swift`, `StatusIconsView.swift`, `TileView.swift`, `CliEvents.swift` (DEBUG `QaTile.audioIcon`), `BackgroundWork.swift` (thread budget 47 → 48), `project.pbxproj` |
 | **Pinned windows** | Pin a window and it leads the switcher, in pin order; the rest keep the shortcut's order. A lilac button (`#A98BF5`, picked by the owner from mockups) in the thumbnail's top-right corner under the pointer, while the four colored buttons stay top-left; a pinned window shows it always, as a filled disk (not pinned: a ring). `P` while the switcher is open does the same (rebindable, "Pin/Unpin window"). Upstream declined pinning (#3425, #4945, #5237) partly because pins in front break "one Tab = previous window": here the default pick is made over the list without pins (`SelectionInputs.pickOrder`) and mapped back, so it still lands on the previous window. A pin lives as long as its window: dropped when the WindowServer says the window is gone (asked once per summon), kept across AltTab relaunches, dropped on reboot (window numbers restart). Ignored under search and in **Show one window per app**. Full rules: `src/switcher/state/PinnedWindowsSpecs.md`. +14 tests | `src/switcher/state/PinnedWindows.swift`, `PinnedWindowsTestable.swift`, `PinnedWindowsTests.swift`, `PinnedWindowsSpecs.md` (all new); `WindowOrderResolver.swift` (`pinRank`), `SelectionResolver.swift` (`pickOrder`), `Windows.swift` (`sorted(_:pinsFirst:)`, `pickOrder()`), `TrafficLightButton.swift` (`.pin`), `TileOverView.swift`, `TileView.swift` (`pinBadge`), `Window.swift`, `ShortcutAction.swift`, `Preferences.swift`, `ControlsTab.swift`, `ShortcutsWhenActiveSheet.swift`, `App.swift`, `CliEvents.swift` (DEBUG `--qa-pin=`, `QaTile.pinBadge`), `Mocks.swift`, `project.pbxproj` |
 | **Fork-safe XS/XL migration** | Upstream PR #5932 version-gates `migrateAppearanceSizeIndexes` at 11.4.4, but the fork's `App.version` is derived from the last `chore(release):` commit, so it never rises above the stored `preferencesVersion` and the gate can never fire (raising the threshold instead would re-run the shift on *every* launch). Called unconditionally, guarded by a one-shot `fork.migratedAppearanceSizeIndexes` flag so upstream's own gate can't shift the indexes a second time once the PR lands. **Drop together with the #5932 cherry-pick** | `src/preferences/PreferencesMigrations.swift` |
+| **1x window captures** | `CGSHWCaptureWindowList` captured every window at the display's scale: 4096x2136 for a window whose tile is at most 622x330px. Those IOSurfaces belong to the WindowServer, so AltTab's own footprint never showed them. Now a window is captured at one pixel per point (`nominalResolution`, `1 << 9`) when either side in points reaches the thumbnail box in pixels, so the tile only ever shrinks it; smaller windows keep 2x, and so does every window while any shortcut uses Preview. Numbers and the rule: [Measured: memory](#measured-memory-and-what-a-summon-leaves-behind), `src/events/WindowCaptureEventsSpecs.md`. +5 tests | `WindowCaptureEvents.swift` (`oneTimeScreenshots`, `oneTimeCapture`), `WindowSurfaceInventory.swift` (`CaptureResolution`), `SkyLight.framework.swift`, `WindowThumbnails.swift` (one comment), `WindowSurfaceInventoryTests.swift`, `WindowCaptureEventsSpecs.md` |
+| **Usage counters flushed every 10 minutes** | `UsageStats.flushDelay` 2s → 600s. Each flush hands the whole `triggers` array to cfprefsd, which rewrites the whole plist. The accepted cost: a kill without a quit loses up to 10 minutes of the counters the About tab shows; `flushNow` still lands them on a normal quit, which is what `ai/install.sh` does | `src/util/UsageStats.swift` |
+| **App icons sized to the thumbnail box** | In Thumbnails style upstream rasterizes each app icon to the tile's longer side. The icon is square and drawn to fit the thumbnail box, so its side never exceeds the box's shorter one. `TileView.maxThumbnailContentSize` is that box, shared with `thumbnailSize` so the two cannot drift | `TilesPanel.swift` (`updateMaxPossibleAppIconSize`), `TileView.swift` |
 
 ### Dropped at the v11.6.1 merge
 
@@ -234,6 +237,49 @@ flash isn't what animates. Its source is still unattributed (no AltTab frame on 
 
 ---
 
+## Measured: memory, and what a summon leaves behind
+
+Asked "where can it use less or run faster, without making anything worse?" (2026-11-22, v11.10.2, macOS
+15.8, ~50 windows, 4096x2304 display at 2x, Medium). The process had been up 5 days at 114 MB
+(`phys_footprint`), against 27 MB right after a launch.
+
+**Window captures cost the WindowServer, not AltTab.** `top -l 1 -pid $(pgrep -x WindowServer) -stats mem`
+before and after one scripted summon held open 7s (`--show=0`, `--hide`):
+
+| Build | WindowServer before → after | IOSurface mapped in AltTab |
+|---|---|---|
+| 2x captures for all (before) | 3.42 → 5.50-5.56 GB, **+2.07 GB**, two runs | 1.3 GB in 67-68 surfaces |
+| 1x where the tile only shrinks (now) | 3.39-3.44 → 3.92-3.97 GB, **+0.53 GB** | 318 MB in 59-61 surfaces |
+
+It goes back to 3.4 GB when AltTab quits. Capture latency did not move: median 73ms at 1x, 65ms at 2x,
+121 back-to-back pairs on one build. So this is a memory change only. Sharpness was checked by arithmetic,
+not by eye: every window on the machine that day came back 2.4-3.3 times the size of its tile.
+
+**App icons were half of AltTab's own footprint.** 671x671px per app (1.76 MB) plus CoreAnimation's
+copy of each one shown (1.82 MB), for an icon drawn at 330px at most. In the 5-day process that was
+~52 MB of the 114. After two summons over 10 apps:
+
+| Build | AltTab footprint | CG raster | CoreAnimation |
+|---|---|---|---|
+| before | 65-73 MB | 15.8 MB | 17.0 MB |
+| icons sized to the thumbnail box | **37 MB** | 4.0 MB | 5.0 MB |
+
+**Usage counters were the largest CPU item per summon.** `sample` across one summon: 95ms inside
+`UsageStats.flushOnQueue` → `setObject:forKey:` on the write queue, for 69,643 timestamps (175 days). A
+benchmark of the same call with the same array: 48ms of client CPU and ~50ms of cfprefsd CPU per flush,
+677 KB written. With the 10-minute delay: no flush sample in 8s over three summons, the plist's mtime
+unchanged, and all three timestamps on disk after a quit.
+
+Found and left alone:
+
+| What | Evidence | Why it stays |
+|---|---|---|
+| A leak inside macOS | `CGSHWCaptureWindowList` → `SLSHWCaptureWindowListToIOSurfaceProxying` → `CGRectCreateDictionaryRepresentation` drops one 144-byte dictionary per capture (`leaks` with `MallocStackLogging=lite`: 309 over 6 summons; 26,000 and 3.6 MB after 5 days) | Apple's code. A relaunch clears it |
+| AX subscriptions re-asked forever | 10 processes that never answer (five `node`, `universalaccessd`, `chronod`, …) get 5 `AXObserverAddNotification` calls each every 30s: ~8 thread-seconds blocked per minute | Blocked, not burning: the whole idle process is 0.3% CPU. The retry policy is upstream's, with tests |
+| Wid-keyed maps that only grow | `WindowSurfaceInventory.lastMutation` 426 KB after 5 days; `windowsPendingFocusPromotion` ~100 KB, copied when an event writes it (~7ms a minute) | Below the noise. `lastMutation` could drop entries at or below `latestAppliedSnapshot` with no behaviour change, if anything else ever takes that file apart |
+
+---
+
 ## Measuring performance
 
 - **The installed app logs nowhere.** `Logger` only calls `print()`: no `os_log`, nothing in the unified
@@ -268,11 +314,13 @@ flash isn't what animates. Its source is still unattributed (no AltTab frame on 
   so compare its timings only with other Debug timings.
 - **Memory: measure `phys_footprint`** (`footprint <pid>` or `vmmap --summary`), **not RSS.** On macOS 15
   AltTab captures through the private path (`CGSHWCaptureWindowList`, since ScreenCaptureKit is buggy
-  there, #5190). The captured images are IOSurfaces shared with the WindowServer: 825 MB virtual, 0
-  resident in AltTab, so thumbnails cost the process almost nothing. "Saving RAM" by downscaling them
-  through a `CGContext` moved them into AltTab's own heap: `phys_footprint` went 61 → 150 MB and
-  CoreAnimation 14 → 59 MB. It was reverted. Don't retry thumbnail memory optimizations without a
-  measured `phys_footprint` win first.
+  there, #5190). The captured images are IOSurfaces shared with the WindowServer: 0 resident in AltTab,
+  so they never show in its footprint, but the WindowServer pays for every one (see
+  [Measured: memory](#measured-memory-and-what-a-summon-leaves-behind)). **For anything that touches
+  captures, read the WindowServer's footprint too:** `top -l 1 -pid $(pgrep -x WindowServer) -stats mem`
+  works without root. "Saving RAM" by downscaling them through a `CGContext` moved them into AltTab's
+  own heap: `phys_footprint` went 61 → 150 MB and CoreAnimation 14 → 59 MB. It was reverted, judged on
+  AltTab's footprint alone; nobody measured the WindowServer side of it.
 
 ---
 
@@ -429,7 +477,7 @@ xcodebuild build-for-testing -project alt-tab-macos.xcodeproj -scheme Test \
 xcrun xctest DerivedDataTest/Build/Products/Debug/unit-tests.xctest
 ```
 
-### Expected: **1717 tests, 0 failures**
+### Expected: **1722 tests, 0 failures**
 
 Any failure is a real regression. Nothing here is "expected to be red".
 
@@ -505,8 +553,10 @@ Then:
    `TileView`'s `statusIcons.update` (the playing-audio icon), the pinned-windows hooks (`pinRank` in
    `WindowOrderResolver.isOrderedBefore`, `pickOrder` in `SelectionResolver.initialPickIndex` and in
    `Windows.selectionInputs`, `sort()` going through `sorted(_:pinsFirst:)`, `pinButton` in
-   `TileOverView.windowControlButtons`, `PinnedWindows.forgetClosedWindows()` in `App.swift`), and no
-   Sparkle / AppCenter code coming back. This must print nothing (a plain `grep Sparkle` also hits
+   `TileOverView.windowControlButtons`, `PinnedWindows.forgetClosedWindows()` in `App.swift`), the
+   memory patches (`CaptureResolution.nominalSuffices` feeding `oneTimeCapture` in
+   `WindowCaptureEvents.swift`, `flushDelay = 600` in `UsageStats.swift`, `maxThumbnailContentSize` in
+   `TilesPanel.updateMaxPossibleAppIconSize`), and no Sparkle / AppCenter code coming back. This must print nothing (a plain `grep Sparkle` also hits
    upstream's comments):
    ```bash
    grep -rnE 'import (Sparkle|AppCenter)|SPUStandard|SparkleDelegate|AppCenterCrash|checkForUpdates' src
